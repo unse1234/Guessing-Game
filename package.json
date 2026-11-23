@@ -1,0 +1,35 @@
+{
+  "name": "draw-and-guess",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@12.21.0",
+  "engines": {
+    "node": ">=22.22.3"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @draw-and-guess/shared build && pnpm -r --parallel --stream dev",
+    "build": "pnpm -r build",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm --filter @draw-and-guess/shared build && pnpm -r typecheck",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{js,cjs,mjs,ts,tsx}": [
+      "eslint",
+      "prettier --write"
+    ],
+    "*.{json,md,css,yaml,yml}": "prettier --write"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
+    "husky": "9.1.7",
+    "lint-staged": "17.6.2",
+    "prettier": "3.10.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.73.0",
+    "eslint-config-next": "16.4.6"
+  }
+}
