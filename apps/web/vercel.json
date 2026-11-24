@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "installCommand": "HUSKY=0 npx --yes pnpm@12.21.0 -w install --frozen-lockfile --prod=false",
+  "installCommand": "HUSKY=0 npx --yes pnpm@12.21.0 --filter @draw-and-guess/web... install --frozen-lockfile --prod=false",
   "buildCommand": "npx --yes pnpm@12.21.0 --filter @draw-and-guess/web... build",
   "git": {
     "deploymentEnabled": false
