@@ -1,6 +1,6 @@
 # Draw & Guess
 
-Draw & Guess is a browser-based multiplayer drawing and guessing game. Phase 1 provides a responsive lobby, two placeholder room actions, and a live connection check. The room, game, drawing, and scoring modules are ready for implementation.
+Draw & Guess is a browser-based multiplayer drawing and guessing game. Players can create, join, and leave live rooms of up to eight players. The lobby synchronizes membership, host ownership, and online status. The game and results screens are local UI previews.
 
 ## Stack
 
@@ -61,19 +61,28 @@ After `pnpm build`, replace `dev` with `start` to run the production builds loca
 
 Real environment files are ignored by Git.
 
-## Verify the connection
+## Test a multiplayer room
 
-1. Run `pnpm dev` and open [the lobby](http://localhost:3000).
-2. The status begins at **Connecting**. The browser sends the shared `ping` event when Socket.IO connects. The badge changes to **Connected** after the browser receives and validates the matching `pong`.
-3. Focus or hover over the badge to see the round-trip time. If a connection attempt fails, the badge reports it and offers a retry.
-4. In another terminal, run the smoke check:
+1. Run `pnpm dev` and open [the home page](http://localhost:3000). Enter a nickname and select **Create Room**.
+2. Open a separate browser profile or private window, visit the home page, and select **Join Room**. Enter another nickname and the six-character code. You can also open the lobby’s **Copy Link** invitation and select **Join this room**.
+3. Verify that both windows show two players. Refresh the guest window and confirm the same membership returns. To test a temporary disconnect, restore the connection within 15 seconds of the server marking the guest offline.
+4. Select **Leave Room** in the host window. The guest becomes host. **Start Game** remains a placeholder.
+5. In another terminal, run the checks:
 
    ```powershell
    Invoke-RestMethod -Uri http://localhost:3001/health | ConvertTo-Json -Compress
    pnpm --filter @draw-and-guess/web test:connection
+   pnpm --filter @draw-and-guess/web test:rooms
    ```
 
-   The health response is `{"status":"ok"}`. For a customized setup, set `NEXT_PUBLIC_SOCKET_URL` and `FRONTEND_URL` in the terminal before running the smoke check.
+   The health response is `{"status":"ok"}`. For a customized setup, set `NEXT_PUBLIC_SOCKET_URL` and `FRONTEND_URL` in the terminal before running the checks. The room integration test measures acknowledgement and peer-update timings. Set `NODE_ENV=development` on the API process to include a send timestamp for the browser’s development propagation log.
+
+Run the service unit tests against the compiled API:
+
+```powershell
+pnpm build
+pnpm --filter @draw-and-guess/api test:rooms
+```
 
 ## Structure
 
@@ -81,24 +90,23 @@ Real environment files are ignored by Git.
 draw-and-guess/
 ├── apps/
 │   ├── web/
-│   │   ├── scripts/               Connection smoke check
+│   │   ├── scripts/               Connection and room integration checks
 │   │   └── src/
 │   │       ├── app/               App Router and lobby styles
 │   │       ├── components/
 │   │       │   ├── ui/            shadcn/ui primitives
-│   │       │   ├── lobby/         Phase 1 lobby
-│   │       │   ├── game/
-│   │       │   └── canvas/
+│   │       │   └── layout/        Shared branding and feedback
+│   │       ├── features/          Home, lobby, game, and results
 │   │       ├── hooks/
-│   │       ├── lib/
-│   │       ├── stores/
+│   │       ├── lib/               Socket and room connection manager
+│   │       ├── stores/            Zustand room state
 │   │       └── types/
 │   └── api/
 │       └── src/
 │           ├── main.ts
 │           ├── app.module.ts
 │           ├── common/            Environment, adapter, gateway, and health
-│           ├── rooms/
+│           ├── rooms/            Room service and Socket.IO gateway
 │           ├── game/
 │           ├── drawing/
 │           └── scoring/
@@ -116,8 +124,10 @@ draw-and-guess/
 
 The shared package emits JavaScript and declarations. Nest loads the compiled contracts at runtime and Next bundles the same exports, keeping event names and payload validation in one place. The API validates its environment at startup and serves HTTP health and Socket.IO on the same port.
 
-The lobby owns one Socket.IO client lifecycle through its hook. Zustand holds connection status and empty slots for the local player and room view. The API will own room membership and game decisions. When canvas work begins, mount React Konva from a client component via `next/dynamic` with `ssr: false`.
+The API owns room membership using in-memory maps for rooms, socket memberships, and reconnect credentials. It sends versioned public snapshots only to affected rooms. On an unexpected disconnect, the server holds the player's membership for 15 seconds using one expiry timer. Host ownership transfers to the next connected player when the host leaves or expires.
+
+The frontend reuses one Socket.IO client per tab across Home and Lobby. Zustand holds the current public snapshot and connection status. A private reconnect credential in `sessionStorage` restores the same player after a refresh or reconnect. Rooms and reconnect credentials are lost on an API restart.
 
 ## Phase 2
 
-Start with server-owned in-memory rooms. Add typed create/join acknowledgments and room snapshots, validate inputs with Zod, and enforce the 2–8 player limit. Wire up the lobby actions and verify two browsers receive the same membership updates. Add host controls, disconnect cleanup, and namespaced events before implementing turns or drawing synchronization.
+Add host-authorized game start and transitions from the live lobby into the game.

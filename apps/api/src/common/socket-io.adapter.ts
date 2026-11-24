@@ -16,6 +16,7 @@ export class SocketIoAdapter extends IoAdapter {
   ): Server {
     const serverOptions: Partial<ServerOptions> = {
       ...options,
+      maxHttpBufferSize: 16 * 1024,
       cors: { origin: this.origin },
       allowRequest: (request, callback) => {
         const origin = request.headers.origin;

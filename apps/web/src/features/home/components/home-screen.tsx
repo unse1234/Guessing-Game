@@ -1,8 +1,9 @@
+import { FeedbackToaster } from '@/components/layout/feedback-toaster';
 import { SiteBrand } from '@/components/layout/site-brand';
 import { Card } from '@/components/ui/card';
 import { HomeActions } from '@/features/home/components/home-actions';
 
-export function HomeScreen() {
+export function HomeScreen({ inviteCode }: { inviteCode?: string }) {
   return (
     <main className="flex min-h-dvh w-full items-center justify-center px-4 py-[clamp(0.75rem,3svh,2rem)] sm:px-8">
       <Card className="w-full max-w-240 gap-0 rounded-xl border-0 p-0 ring-1 ring-border shadow-none">
@@ -18,9 +19,10 @@ export function HomeScreen() {
             A multiplayer drawing and guessing game.
           </p>
 
-          <HomeActions />
+          <HomeActions key={inviteCode} inviteCode={inviteCode} />
         </div>
       </Card>
+      <FeedbackToaster />
     </main>
   );
 }

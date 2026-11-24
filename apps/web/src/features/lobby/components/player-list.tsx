@@ -1,13 +1,16 @@
 import { Crown, User } from 'lucide-react';
-import type { LobbyPlayer } from '@/features/lobby/data/mock-players';
+import { ROOM_CAPACITY, type RoomPlayer } from '@draw-and-guess/shared';
+import { memo } from 'react';
 
-const roomCapacity = 8;
-
-export function PlayerList({ players }: { players: readonly LobbyPlayer[] }) {
+export const PlayerList = memo(function PlayerList({
+  players,
+}: {
+  players: readonly RoomPlayer[];
+}) {
   return (
     <section aria-labelledby="lobby-players" className="min-w-0">
       <h2 id="lobby-players" className="mb-2 text-lg font-semibold sm:text-xl">
-        Players ({players.length}/{roomCapacity})
+        Players ({players.length}/{ROOM_CAPACITY})
       </h2>
 
       <ul role="list" className="divide-y rounded-md border bg-background/50">
@@ -41,4 +44,4 @@ export function PlayerList({ players }: { players: readonly LobbyPlayer[] }) {
       </ul>
     </section>
   );
-}
+});

@@ -3,9 +3,8 @@ import { SiteBrand } from '@/components/layout/site-brand';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { LobbyActions } from '@/features/lobby/components/lobby-actions';
-import { PlayerList } from '@/features/lobby/components/player-list';
+import { LivePlayerList } from '@/features/lobby/components/live-player-list';
 import { RoomCode } from '@/features/lobby/components/room-code';
-import { mockPlayers } from '@/features/lobby/data/mock-players';
 
 export function LobbyScreen({ code }: { code: string }) {
   return (
@@ -44,10 +43,10 @@ export function LobbyScreen({ code }: { code: string }) {
               <RoomCode code={code} />
             </section>
 
-            <PlayerList players={mockPlayers} />
+            <LivePlayerList code={code} />
           </div>
 
-          <LobbyActions />
+          <LobbyActions code={code} />
         </div>
       </Card>
       <FeedbackToaster />
