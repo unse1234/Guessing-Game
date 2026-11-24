@@ -53,11 +53,16 @@ test('two complete rotations, restored results, and host replay on the same conn
     await request(guest, events.roomJoin, { code, nickname: 'Ali' }),
   );
   let choices = wait(host, events.wordOptions);
-  let selection = success(
-    await request(host, events.gameStart, { code, generation: gameGeneration }),
-  );
+  const [peerSelection, started] = await Promise.all([
+    wait(guest, events.gameState),
+    request(host, events.gameStart, { code, generation: gameGeneration }).then(
+      success,
+    ),
+  ]);
+  let selection = started;
+  assert.deepEqual(peerSelection, selection);
   const gameId = selection.gameId;
-  const summaryLatency = [];
+  const turnEndLatency = [];
   const nextSkew = [];
   const scores = new Map();
   let previousGuess;
@@ -73,14 +78,16 @@ test('two complete rotations, restored results, and host replay on the same conn
     assert.equal(selection.currentRound, 1 + Math.floor(index / 2));
     assert.equal(selection.currentTurn, index + 1);
     const word = wordOptions.options[0];
-    const drawing = success(
-      await request(drawer, events.wordChoose, {
+    const [peerDrawing, drawing] = await Promise.all([
+      wait(guesser, events.gameState),
+      request(drawer, events.wordChoose, {
         code,
         turnId: selection.turnId,
         revision: selection.revision,
         word,
-      }),
-    );
+      }).then(success),
+    ]);
+    assert.deepEqual(peerDrawing, drawing);
     assert.equal(drawing.phase, 'drawing');
     assert.equal(drawing.summary, undefined);
     if (previousGuess) {
@@ -96,23 +103,36 @@ test('two complete rotations, restored results, and host replay on the same conn
       requestId: randomBytes(16).toString('hex'),
     };
     const begin = performance.now();
-    const [summary, guess] = await Promise.all([
+    const [turnEnd, peerEnd, guess] = await Promise.all([
       wait(drawer, events.gameState).then((state) => {
-        summaryLatency.push(performance.now() - begin);
+        turnEndLatency.push(performance.now() - begin);
         return state;
       }),
+      wait(guesser, events.gameState),
       request(guesser, events.guessSubmit, currentGuess).then(success),
     ]);
     previousGuess = currentGuess;
     assert.equal(guess.correct, true);
-    assert.equal(summary.phase, 'turn_summary');
-    assert.equal(summary.summary.word, word);
-    for (const { playerId, score, points } of summary.summary.awards) {
+    assert.deepEqual(turnEnd, peerEnd);
+    if (selection.currentTurn === selection.totalTurns) {
+      const drawerId = selection.currentDrawerId;
+      const guesserId = index % 2 ? owner.playerId : member.playerId;
+      scores.set(drawerId, scores.get(drawerId) + 50);
+      scores.set(guesserId, scores.get(guesserId) + guess.pointsAwarded);
+      assert.equal(turnEnd.phase, 'finished');
+      assert.equal(turnEnd.phaseEndsAt, null);
+      assert.equal(turnEnd.summary, undefined);
+      selection = turnEnd;
+      break;
+    }
+    assert.equal(turnEnd.phase, 'turn_summary');
+    assert.equal(turnEnd.summary.word, word);
+    for (const { playerId, score, points } of turnEnd.summary.awards) {
       assert.equal(score, (scores.get(playerId) ?? 0) + points);
       scores.set(playerId, score);
     }
 
-    if (index < 3) choices = wait(guesser, events.wordOptions);
+    choices = wait(guesser, events.wordOptions);
     const states = await Promise.all(
       [host, guest].map(async (socket) => {
         const state = await wait(socket, events.gameState);
@@ -122,7 +142,7 @@ test('two complete rotations, restored results, and host replay on the same conn
     assert.deepEqual(states[0].state, states[1].state);
     nextSkew.push(Math.abs(states[0].received - states[1].received));
     selection = states[0].state;
-    assert.ok(selection.serverTime >= summary.phaseEndsAt);
+    assert.ok(selection.serverTime >= turnEnd.phaseEndsAt);
   }
   assert.equal(selection.phase, 'finished');
   assert.equal(selection.results.gameId, gameId);
@@ -202,6 +222,6 @@ test('two complete rotations, restored results, and host replay on the same conn
     'GUESS_CLOSED',
   );
   console.log(
-    `[lifecycle localhost] last guess to summary at peer ${summaryLatency.map((ms) => ms.toFixed(2)).join(', ')} ms; next phase peer arrival skew ${nextSkew.map((ms) => ms.toFixed(2)).join(', ')} ms; restart ACK ${restartMs.toFixed(2)} ms`,
+    `[lifecycle localhost] last guess to turn end at peer ${turnEndLatency.map((ms) => ms.toFixed(2)).join(', ')} ms; next phase peer arrival skew ${nextSkew.map((ms) => ms.toFixed(2)).join(', ')} ms; restart ACK ${restartMs.toFixed(2)} ms`,
   );
 });

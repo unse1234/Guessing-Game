@@ -44,7 +44,7 @@
 
 @container (min-width: 30rem) {
   .toolbar {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(10rem, 0.42fr);
     align-items: center;
   }
 }
@@ -115,17 +115,6 @@
 
   .drawingBoard[data-readonly='true'] .canvasSlot {
     max-width: max(12rem, calc((100svh - 11rem) * 1.5));
-  }
-
-  @container (min-width: 25rem) {
-    .toolbar {
-      grid-template-columns: auto minmax(0, 1fr);
-      align-items: center;
-    }
-
-    .toolbar [role='group'] > span {
-      display: none;
-    }
   }
 }
 

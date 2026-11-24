@@ -178,13 +178,11 @@ test('a drawer who leaves during selection forfeits and reaches results when alo
   success(games.start('host', { code, generation: 0 }));
   rooms.leave('host');
   assert.equal(updates.length, 2);
-  assert.equal(updates[1].game.phase, 'turn_summary');
-  assert.equal(updates[1].game.summary.word, null);
-  assert.equal(updates[1].game.summary.reason, 'drawer_left');
+  assert.equal(updates[1].game.phase, 'finished');
+  assert.equal(updates[1].game.summary, undefined);
+  assert.equal(updates[1].game.results.reason, 'insufficient_players');
   t.mock.timers.tick(5_000);
-  assert.equal(updates.length, 3);
-  assert.equal(updates[2].game.phase, 'finished');
-  assert.equal(updates[2].game.results.reason, 'insufficient_players');
+  assert.equal(updates.length, 2);
 });
 
 test('closing the last membership cancels the phase timeout', (t) => {

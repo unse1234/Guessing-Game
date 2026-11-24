@@ -31,7 +31,7 @@ export function TurnSummaryDialog({
         className="max-h-[calc(100dvh-1rem)] gap-2.5 overflow-y-auto rounded-xl bg-card p-3 data-[state=closed]:animate-none data-[state=open]:animate-none sm:max-w-sm sm:p-4"
       >
         <DialogHeader className="gap-1 text-center sm:text-center">
-          <DialogTitle className="text-xl">Round Complete</DialogTitle>
+          <DialogTitle className="text-xl">Turn Complete</DialogTitle>
           <DialogDescription>{reasons[summary.reason]}</DialogDescription>
           {summary.word && (
             <p className="text-sm">
@@ -69,7 +69,7 @@ export function TurnSummaryDialog({
           </tbody>
         </table>
         <p className="flex items-center justify-center gap-2 text-sm">
-          Continuing in <DeadlineClock deadline={deadline} />
+          Next turn in <DeadlineClock deadline={deadline} />
         </p>
       </DialogContent>
     </Dialog>

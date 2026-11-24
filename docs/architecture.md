@@ -19,14 +19,16 @@ stateDiagram-v2
     [*] --> waiting
     waiting --> word_selection: Host starts with at least two connected players
     word_selection --> drawing: Drawer picks or selection expires
-    word_selection --> turn_summary: Drawer forfeits
-    drawing --> turn_summary: Deadline, all eligible guesses correct, or drawer forfeits
-    turn_summary --> word_selection: Next eligible drawing slot
-    turn_summary --> finished: Schedule ends or too few players remain
+    word_selection --> turn_summary: Drawer forfeits and another turn remains
+    drawing --> turn_summary: Turn ends and another turn remains
+    word_selection --> finished: Drawer forfeits and play cannot continue
+    drawing --> finished: Final turn ends or too few players remain
+    turn_summary --> word_selection: Countdown reaches the next eligible drawing slot
+    turn_summary --> finished: Departure removes the last eligible turn or too few players remain
     finished --> waiting: Host selects Play Again
 ```
 
-The server schedules two rotations of the initial roster. Members who leave permanently lose future slots and retain earned points. The server gives the drawer three private options and 15 seconds to choose. On timeout it picks the first option. Drawing lasts up to 60 seconds. The five-second summary reveals the answer when one was selected and shows awards before the next transition. Replay keeps the room and membership while the next start creates a new game with zero scores.
+The server schedules two rotations of the initial roster. Members who leave permanently lose future slots and retain earned points. The server gives the drawer three private options and 15 seconds to choose. On timeout it picks the first option. Drawing lasts up to 60 seconds. Between turns, a five-second summary reveals the answer when one was selected and shows awards. When no further turn can be played, the server publishes final standings immediately. Replay keeps the room and membership while the next start creates a new game with zero scores.
 
 Each active game has one timer for its current phase. It publishes absolute deadlines and server time for the browser countdown. A timer verifies the game and revision before changing state. Closing a room or stopping the API cancels its timers. Revision, game, and turn identifiers protect against stale actions and snapshots.
 

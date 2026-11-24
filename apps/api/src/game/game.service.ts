@@ -380,7 +380,11 @@ export class GameService implements OnModuleDestroy {
     }
 
     const turn = game.turn;
-    if (!turn || game.phase === 'turn_summary') return;
+    if (!turn) return;
+    if (game.phase === 'turn_summary') {
+      this.finishIfComplete(game);
+      return;
+    }
     turn.pendingGuessers.delete(playerId);
     if (turn.drawerId === playerId) this.endTurn(game, 'drawer_left');
     else if (game.eligible.size < gameConfig.minPlayers)
@@ -389,10 +393,7 @@ export class GameService implements OnModuleDestroy {
   }
 
   private advanceAfterSummary(game: ActiveGame) {
-    if (game.eligible.size < gameConfig.minPlayers) {
-      this.finishGame(game, 'insufficient_players');
-      return;
-    }
+    if (this.finishIfComplete(game)) return;
     const length = game.roster.length;
     for (
       let slot = game.slot + 1;
@@ -407,8 +408,17 @@ export class GameService implements OnModuleDestroy {
     this.finishGame(game, 'completed');
   }
 
+  private finishIfComplete(game: ActiveGame) {
+    if (game.eligible.size < gameConfig.minPlayers) {
+      this.finishGame(game, 'insufficient_players');
+      return true;
+    }
+    if (game.currentTurn < game.totalTurns) return false;
+    this.finishGame(game, 'completed');
+    return true;
+  }
+
   private finishGame(game: ActiveGame, reason: FinalGameResults['reason']) {
-    if (game.phase !== 'turn_summary') return;
     const room = this.rooms.transitionGameStatus(
       game.code,
       'playing',
@@ -470,6 +480,7 @@ export class GameService implements OnModuleDestroy {
     const turn = game.turn;
     if (!turn || (game.phase !== 'drawing' && game.phase !== 'word_selection'))
       return;
+    if (this.finishIfComplete(game)) return;
     const awards = game.roster
       .map(({ id, nickname }) => ({
         playerId: id,

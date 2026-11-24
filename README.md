@@ -72,7 +72,7 @@ Keep local environment files out of Git. The web build and production API requir
 
 ## Game and Socket.IO
 
-The host starts with at least two connected players. The server runs `waiting → word_selection → drawing → turn_summary`, then starts the next eligible turn or moves to `finished`. The host can choose **Play Again** to return everyone to the same lobby.
+The host starts with at least two connected players. The server shows a timed summary between playable turns. When the last turn ends, it publishes final standings immediately. The host can choose **Play Again** to return everyone to the same lobby.
 
 | Events                                                             | Purpose                                                                    |
 | ------------------------------------------------------------------ | -------------------------------------------------------------------------- |

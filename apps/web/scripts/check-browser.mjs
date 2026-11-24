@@ -258,19 +258,27 @@ test(
     );
     await checkViewports(guest, guest.getByRole('timer'));
 
-    const teal = button(host, 'Teal');
-    const size = await teal.boundingBox();
+    const purple = button(host, 'Purple');
+    const ink = [147, 51, 234, 255];
+    assert.equal(
+      await host
+        .getByRole('group', { name: 'Colors' })
+        .getByRole('button')
+        .count(),
+      12,
+    );
+    const size = await purple.boundingBox();
     assert.ok(
       size && size.width >= 44 && size.height >= 44,
       'Touch color swatches need a 44px target',
     );
     const hostCDP = await host.context().newCDPSession(host);
-    await teal.tap();
+    await purple.tap();
     await host
-      .getByRole('button', { name: 'Teal', pressed: true })
+      .getByRole('button', { name: 'Purple', pressed: true })
       .waitFor(wait);
     await touchLine(host, hostCDP, 0.42, 'touchCancel');
-    await expectPixel(guest, 0.5, [113, 201, 206, 255]);
+    await expectPixel(guest, 0.5, ink);
     await button(host, 'Eraser').tap();
     await host
       .getByRole('button', { name: 'Eraser', pressed: true })
@@ -292,9 +300,9 @@ test(
       .getByRole('button', { name: 'Pencil', pressed: true })
       .waitFor(wait);
     await touchLine(host, hostCDP, 0.62);
-    await expectPixel(guest, 0.5, [113, 201, 206, 255], 0.62);
+    await expectPixel(guest, 0.5, ink, 0.62);
     await host.setViewportSize(deviceViewports[1]);
-    await expectPixel(host, 0.5, [113, 201, 206, 255], 0.62);
+    await expectPixel(host, 0.5, ink, 0.62);
     await button(host, 'Clear canvas').tap();
     await expectPixel(guest, 0.5, null, 0.62);
 
@@ -341,7 +349,7 @@ test(
       .getByRole('region', { name: 'Players' })
       .scrollIntoViewIfNeeded();
     await submit(guest, word, true);
-    await dialog(host, 'Round Complete').waitFor(wait);
+    await dialog(host, 'Turn Complete').waitFor(wait);
     for (let turn = 1; turn < 4; turn++) {
       const [drawer, guesser] = turn % 2 ? [guest, host] : [host, guest];
       const choices = dialog(drawer, 'Choose a Word');
@@ -350,7 +358,7 @@ test(
       assert.ok(box && box.y >= 0 && box.y + box.height <= 667);
       await choices.getByRole('timer').waitFor(wait);
       await submit(guesser, await chooseWord(drawer, [guesser]), true);
-      await dialog(drawer, 'Round Complete').waitFor(wait);
+      if (turn < 3) await dialog(drawer, 'Turn Complete').waitFor(wait);
     }
     await host.waitForURL('**/results/' + code, wait);
     await guest.waitForURL('**/results/' + code, wait);
@@ -435,20 +443,24 @@ test(
       const word = await chooseWord(drawer, guessers);
       const [first, second] = guessers;
       if (turn === 0) {
-        await button(drawer, 'Teal').click();
+        await button(drawer, 'Red').click();
         const slider = drawer.getByRole('slider', { name: 'Brush size' });
         await slider.press('End');
         assert.equal(await slider.getAttribute('aria-valuenow'), '30');
-        const teal = [113, 201, 206, 255];
-        await drawLine(drawer, () => expectPixel(first, 0.23, teal));
-        await Promise.all(guessers.map((page) => expectPixel(page, 0.5, teal)));
-        await expectPixel(first, 0.5, teal, 0.435);
+        const red = [220, 38, 38, 255];
+        await drawLine(drawer, () => expectPixel(first, 0.23, red));
+        await Promise.all(guessers.map((page) => expectPixel(page, 0.5, red)));
+        await expectPixel(first, 0.5, red, 0.435);
         await button(drawer, 'Eraser').click();
         await drawLine(drawer);
         await Promise.all(guessers.map((page) => expectPixel(page, 0.5, null)));
-        await button(drawer, 'Pencil').click();
+        await button(drawer, 'Blue').click();
+        assert.equal(
+          await button(drawer, 'Pencil').getAttribute('aria-pressed'),
+          'true',
+        );
         await drawLine(drawer);
-        await expectPixel(second, 0.5, teal);
+        await expectPixel(second, 0.5, [37, 99, 235, 255]);
         await button(drawer, 'Clear canvas').click();
         await Promise.all(pages.map((page) => expectPixel(page, 0.5, null)));
         await submit(first, 'A wrong answer');
@@ -477,12 +489,13 @@ test(
       assert.equal(await input(first).isDisabled(), true);
       assert.equal(await second.getByText(/Correct! \+\d+ points/).count(), 0);
       await submit(second, word, true);
+      if (turn === 5) break;
       for (const page of pages) {
-        const summary = dialog(page, 'Round Complete');
+        const summary = dialog(page, 'Turn Complete');
         await summary.getByText(word, { exact: true }).waitFor(wait);
         assert.equal(await summary.getByRole('row').count(), 4);
       }
-      const awards = await dialog(host, 'Round Complete')
+      const awards = await dialog(host, 'Turn Complete')
         .locator('tbody tr')
         .evaluateAll((rows) =>
           rows.map((row) =>
@@ -498,7 +511,15 @@ test(
       }
     }
     await Promise.all(
-      pages.map((page) => page.waitForURL('**/results/' + code, wait)),
+      pages.map(async (page) => {
+        const destination = await Promise.race([
+          page.waitForURL('**/results/' + code, wait).then(() => 'results'),
+          dialog(page, 'Turn Complete')
+            .waitFor(wait)
+            .then(() => 'summary'),
+        ]);
+        assert.equal(destination, 'results');
+      }),
     );
     for (const page of pages) {
       const results = page.getByRole('table', { name: /Final scores/ });
@@ -511,9 +532,11 @@ test(
           ),
         );
       assert.equal(rows.length, 3);
-      const best = Math.max(...totals.values());
+      const best = Math.max(...rows.map(([, , score]) => Number(score)));
       for (const [index, [rank, nickname, score]] of rows.entries()) {
-        assert.equal(Number(score), totals.get(nickname));
+        const earned = Number(score) - totals.get(nickname);
+        if (nickname === names[2]) assert.equal(earned, 100);
+        else assert.ok(earned >= 100 && earned <= 400 && earned % 5 === 0);
         assert.equal(rank === '1', Number(score) === best);
         if (index > 0) assert.ok(Number(rows[index - 1][2]) >= Number(score));
       }
@@ -562,7 +585,7 @@ test(
     await menu.getByRole('button').first().waitFor(wait);
     assert.deepEqual(await menu.getByRole('button').allTextContents(), options);
     const word = await chooseWord(host, guests);
-    const ink = [18, 76, 83, 255];
+    const ink = [32, 32, 32, 255];
     await drawLine(host);
     await expectPixel(guest, 0.5, ink);
     const timerLabel = host.getByRole('timer');

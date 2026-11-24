@@ -145,6 +145,12 @@ test('rotates four players over two rounds, preserves scores, and shares a tied 
       );
     }
     const summary = f.view(guesser).game;
+    if (turn === 7) {
+      assert.equal(summary.phase, 'finished');
+      assert.equal(summary.results.finishedAt, Date.now());
+      assert.equal(f.timers.size, 0);
+      break;
+    }
     assert.equal(summary.phase, 'turn_summary');
     assert.equal(summary.summary.word, choice.word);
     assert.equal(summary.summary.reason, 'all_correct');
@@ -184,6 +190,10 @@ test('rotates four players over two rounds, preserves scores, and shares a tied 
     f.updates.filter(({ game }) => game.phase === 'finished').length,
     1,
   );
+  assert.equal(
+    f.updates.filter(({ game }) => game.phase === 'turn_summary').length,
+    7,
+  );
 });
 
 test('drawing timeout and a simultaneous late guess produce one summary and one next turn', (t) => {
@@ -219,6 +229,29 @@ test('drawing timeout and a simultaneous late guess produce one summary and one 
     2,
   );
   assert.equal(f.games.choose('socket1', choice).error.code, 'WRONG_PHASE');
+});
+
+test('a departure during the summary skips the countdown if it removes the last scheduled turn', (t) => {
+  const f = fixture(t, 3);
+  success(f.start());
+  for (let i = 0; i < 5; i++) {
+    f.draw(`socket${i % 3}`);
+    f.tick(gameConfig.drawingMs);
+    if (i < 4) f.advance();
+  }
+  assert.equal(f.view().game.phase, 'turn_summary');
+  const [summaryTimer] = f.timers;
+  f.rooms.leave('socket2');
+  const final = f.view().game;
+  assert.equal(final.phase, 'finished');
+  assert.equal(final.currentTurn, 5);
+  assert.equal(final.totalTurns, 5);
+  assert.equal(final.results.reason, 'completed');
+  assert.equal(final.results.players.length, 3);
+  assert.equal(f.timers.size, 0);
+  summaryTimer.run();
+  f.advance();
+  assert.equal(f.updates.at(-1).game.revision, final.revision);
 });
 
 test('forfeits a departed drawer, settles the old drawing, and skips departed slots with points preserved', (t) => {
@@ -338,8 +371,7 @@ test('finishes after grace expiry, restores final results, and restarts only the
   f.tick(14_999);
   assert.equal(f.view().game.phase, 'drawing');
   f.tick(1);
-  assert.equal(f.view().game.summary.reason, 'insufficient_players');
-  f.advance();
+  assert.equal(f.view().game.phase, 'finished');
   const final = f.view().game.results;
   assert.equal(final.reason, 'insufficient_players');
   assert.equal(f.timers.size, 0);
@@ -379,8 +411,10 @@ test('finished games authorize replay using the current host and server ranks ar
   for (let i = 0; i < 6; i++) {
     const drawer = `socket${i % 3}`;
     f.draw(drawer);
-    f.tick(gameConfig.drawingMs + gameConfig.summaryMs);
+    f.tick(gameConfig.drawingMs);
+    if (i < 5) f.advance();
   }
+  assert.equal(f.view().game.phase, 'finished');
   const request = { code: f.code, gameId: initial.gameId };
   assert.equal(
     f.games.restart('socket1', request).error.code,
