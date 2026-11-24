@@ -6,7 +6,7 @@ import {
   DrawingToolbar,
   DrawingTools,
 } from '@/features/game/components/drawing-toolbar';
-import { drawingColors } from '@/features/game/data/drawing-colors';
+import { quickDrawingColors } from '@/features/game/data/drawing-colors';
 import { useDrawingSync } from '@/features/game/hooks/use-drawing-sync';
 import type { DrawingTool } from '@/features/game/types/drawing';
 import styles from './game-screen.module.css';
@@ -42,7 +42,7 @@ export function DrawingBoard({
 }) {
   const drawing = useDrawingSync(code, turnId, connected, canDraw);
   const [tool, setTool] = useState<DrawingTool>('pen');
-  const [color, setColor] = useState<string>(drawingColors[0].value);
+  const [color, setColor] = useState<string>(quickDrawingColors[0].value);
   const [size, setSize] = useState(8);
 
   const selectColor = useCallback((value: string) => {
@@ -58,7 +58,7 @@ export function DrawingBoard({
       <DrawingToolbar
         color={color}
         size={size}
-        disabled={!drawing.enabled}
+        disabled={!canDraw}
         onSelectColor={selectColor}
         onSizeChange={setSize}
       />

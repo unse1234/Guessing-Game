@@ -258,11 +258,22 @@ test(
     );
     await checkViewports(guest, guest.getByRole('timer'));
 
-    const purple = button(host, 'Purple');
-    const ink = [147, 51, 234, 255];
     const colors = host.getByRole('group', { name: 'Colors' });
-    await ready(purple);
-    assert.equal(await colors.getByRole('button').count(), 12);
+    const quickColor = button(colors, 'Mint');
+    const wheelButton = button(colors, 'Color wheel');
+    await ready(wheelButton);
+    const palette = [
+      'Black',
+      'Off-white',
+      'Coral',
+      'Gold',
+      'Mint',
+      'Cobalt',
+      'Color wheel',
+    ];
+    assert.equal(await colors.getByRole('button').count(), palette.length);
+    for (const label of palette) await button(colors, label).waitFor(wait);
+    assert.equal(await button(guest, 'Color wheel').count(), 0);
     for (const viewport of [
       { width: 375, height: 540 },
       { width: 320, height: 568 },
@@ -277,18 +288,20 @@ test(
         `The drawer's palette should be visible at ${viewport.width} × ${viewport.height}`,
       );
     }
-    const size = await purple.boundingBox();
-    assert.ok(
-      size && size.width >= 44 && size.height >= 44,
-      'Touch color swatches need a 44px target',
-    );
+    for (const control of [quickColor, wheelButton]) {
+      const size = await control.boundingBox();
+      assert.ok(
+        size && size.width >= 44 && size.height >= 44,
+        'Touch color controls need a 44px target',
+      );
+    }
     const hostCDP = await host.context().newCDPSession(host);
-    await purple.tap();
-    await host
-      .getByRole('button', { name: 'Purple', pressed: true })
+    await quickColor.tap();
+    await colors
+      .getByRole('button', { name: 'Mint', pressed: true })
       .waitFor(wait);
     await touchLine(host, hostCDP, 0.42, 'touchCancel');
-    await expectPixel(guest, 0.5, ink);
+    await expectPixel(guest, 0.5, [16, 185, 129, 255]);
     await button(host, 'Eraser').tap();
     await host
       .getByRole('button', { name: 'Eraser', pressed: true })
@@ -305,7 +318,57 @@ test(
     assert.notEqual(await slider.getAttribute('aria-valuenow'), previousSize);
     await touchLine(host, hostCDP, 0.42);
     await expectPixel(guest, 0.5, null);
-    await button(host, 'Pencil').tap();
+
+    await wheelButton.tap();
+    const picker = dialog(host, 'Color wheel');
+    const applyColor = button(picker, 'Use color');
+    await picker.getByText('#10B981', { exact: true }).waitFor(wait);
+    await host.setViewportSize(viewports[1]);
+    const pickerBounds = await picker.boundingBox();
+    assert.ok(
+      pickerBounds &&
+        pickerBounds.y >= 0 &&
+        pickerBounds.y + pickerBounds.height <= viewports[1].height,
+    );
+    await host.setViewportSize(deviceViewports[0]);
+    const wheel = picker.locator('[data-slot="drawing-color-wheel"]');
+    assert.match(
+      await wheel.evaluate(
+        (control) => globalThis.getComputedStyle(control).backgroundImage,
+      ),
+      /conic-gradient/,
+    );
+    const wheelBounds = await wheel.boundingBox();
+    assert.ok(wheelBounds);
+    await wheel.tap({
+      position: { x: wheelBounds.width / 2, y: wheelBounds.height / 6 },
+    });
+    const hue = Number(
+      await picker
+        .getByRole('slider', { name: 'Hue' })
+        .getAttribute('aria-valuenow'),
+    );
+    assert.ok(
+      hue > 250 && hue < 290,
+      `Expected an upper-wheel hue, received ${hue}`,
+    );
+    const brightness = picker.getByRole('slider', { name: 'Brightness' });
+    await brightness.press('Home');
+    await picker.getByText('#000000', { exact: true }).waitFor(wait);
+    await brightness.press('End');
+    const hex = await picker
+      .locator('[data-slot="drawing-color-preview"]')
+      .textContent();
+    assert.match(hex, /^#[\dA-F]{6}$/);
+    assert.notEqual(hex, '#000000');
+    const ink = [
+      ...[1, 3, 5].map((offset) =>
+        Number.parseInt(hex.slice(offset, offset + 2), 16),
+      ),
+      255,
+    ];
+    await applyColor.tap();
+    await picker.waitFor({ ...wait, state: 'hidden' });
     await host
       .getByRole('button', { name: 'Pencil', pressed: true })
       .waitFor(wait);
@@ -453,24 +516,26 @@ test(
       const word = await chooseWord(drawer, guessers);
       const [first, second] = guessers;
       if (turn === 0) {
-        await button(drawer, 'Red').click();
+        await button(drawer, 'Coral').click();
         const slider = drawer.getByRole('slider', { name: 'Brush size' });
         await slider.press('End');
         assert.equal(await slider.getAttribute('aria-valuenow'), '30');
-        const red = [220, 38, 38, 255];
-        await drawLine(drawer, () => expectPixel(first, 0.23, red));
-        await Promise.all(guessers.map((page) => expectPixel(page, 0.5, red)));
-        await expectPixel(first, 0.5, red, 0.435);
+        const coral = [244, 63, 94, 255];
+        await drawLine(drawer, () => expectPixel(first, 0.23, coral));
+        await Promise.all(
+          guessers.map((page) => expectPixel(page, 0.5, coral)),
+        );
+        await expectPixel(first, 0.5, coral, 0.435);
         await button(drawer, 'Eraser').click();
         await drawLine(drawer);
         await Promise.all(guessers.map((page) => expectPixel(page, 0.5, null)));
-        await button(drawer, 'Blue').click();
+        await button(drawer, 'Cobalt').click();
         assert.equal(
           await button(drawer, 'Pencil').getAttribute('aria-pressed'),
           'true',
         );
         await drawLine(drawer);
-        await expectPixel(second, 0.5, [37, 99, 235, 255]);
+        await expectPixel(second, 0.5, [29, 78, 216, 255]);
         await button(drawer, 'Clear canvas').click();
         await Promise.all(pages.map((page) => expectPixel(page, 0.5, null)));
         await submit(first, 'A wrong answer');
@@ -600,7 +665,7 @@ test(
     await menu.getByRole('button').first().waitFor(wait);
     assert.deepEqual(await menu.getByRole('button').allTextContents(), options);
     const word = await chooseWord(host, guests);
-    const ink = [32, 32, 32, 255];
+    const ink = [0, 0, 0, 255];
     await drawLine(host);
     await expectPixel(guest, 0.5, ink);
     const timerLabel = host.getByRole('timer');

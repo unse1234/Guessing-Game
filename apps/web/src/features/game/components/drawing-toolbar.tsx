@@ -1,10 +1,11 @@
 'use client';
 
 import { Eraser, Pencil, Trash2 } from 'lucide-react';
-import { memo, type CSSProperties } from 'react';
+import { memo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { drawingColors } from '@/features/game/data/drawing-colors';
+import { DrawingColorWheel } from '@/features/game/components/drawing-color-wheel';
+import { quickDrawingColors } from '@/features/game/data/drawing-colors';
 import {
   MAX_BRUSH_SIZE,
   MIN_BRUSH_SIZE,
@@ -121,7 +122,7 @@ export const DrawingToolbar = memo(function DrawingToolbar({
         className="flex flex-wrap items-center gap-1"
       >
         <span className="mr-1 text-sm font-semibold">Colors</span>
-        {drawingColors.map(({ value, label }) => (
+        {quickDrawingColors.map(({ value, label }) => (
           <Button
             key={value}
             type="button"
@@ -135,11 +136,17 @@ export const DrawingToolbar = memo(function DrawingToolbar({
             className="size-9 rounded-md border border-transparent p-1 transition-none aria-pressed:border-ring focus-visible:ring-ring [@media(pointer:coarse)]:size-11"
           >
             <span
-              className="size-5 rounded-full border border-foreground/50 bg-(--swatch)"
-              style={{ '--swatch': value } as CSSProperties}
+              aria-hidden="true"
+              className="size-5 rounded-full border border-foreground/50"
+              style={{ backgroundColor: value }}
             />
           </Button>
         ))}
+        <DrawingColorWheel
+          color={color}
+          disabled={disabled}
+          onSelectColor={onSelectColor}
+        />
       </div>
 
       <div className="flex min-w-0 items-center gap-3">
