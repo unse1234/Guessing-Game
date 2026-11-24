@@ -149,6 +149,9 @@ export class RoomsGateway
       return;
     }
 
+    const membership = this.rooms.getConnection(socket.id);
+    // Removing the drawer can synchronously publish to the room.
+    if (membership) void socket.leave(channel(membership.code));
     const change = this.rooms.leave(socket.id);
     if ('ok' in change) {
       ack(change);
@@ -157,10 +160,11 @@ export class RoomsGateway
 
     ack({ ok: true, data: null });
     if (change.kind === 'closed') {
-      this.broadcast(change);
-      void socket.leave(channel(change.code));
+      socket.emit(SOCKET_EVENTS.roomClosed, {
+        code: change.code,
+        reason: 'room_closed',
+      });
     } else {
-      void socket.leave(channel(change.room.code));
       this.broadcast(change);
     }
   }

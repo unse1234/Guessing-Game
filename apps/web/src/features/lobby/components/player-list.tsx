@@ -13,7 +13,10 @@ export const PlayerList = memo(function PlayerList({
         Players ({players.length}/{ROOM_CAPACITY})
       </h2>
 
-      <ul role="list" className="divide-y rounded-md border bg-background/50">
+      <ul
+        role="list"
+        className="divide-y rounded-md border bg-background/50 [@media(min-width:38rem)_and_(max-height:30rem)]:max-h-[max(5rem,calc(100svh-17rem))] [@media(min-width:38rem)_and_(max-height:30rem)]:overflow-y-auto [@media(min-width:38rem)_and_(max-height:30rem)]:overscroll-contain"
+      >
         {players.map(({ id, nickname, isHost, isOnline }) => (
           <li
             key={id}

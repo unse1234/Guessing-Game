@@ -1,11 +1,11 @@
 # Draw & Guess
 
-Draw & Guess is a browser-based multiplayer drawing and guessing game. The live lobby supports up to eight players. The server runs the first turn through word selection and synchronizes the drawer's canvas. The results screen is a UI preview.
+Draw & Guess is a browser-based multiplayer drawing and guessing game for up to eight players. The server coordinates two drawing rounds, synchronizes the canvas and scores, and manages final standings and replay.
 
 ## Stack
 
 - **Web** — Next.js App Router, strict TypeScript, Tailwind CSS, shadcn/ui, Radix UI, Zustand, Socket.IO Client, Zod, Lucide, Sonner, and React Konva/Konva.
-- **API** — NestJS, strict TypeScript, Socket.IO, Nest Config, Zod, and Nano ID.
+- **API** — NestJS, strict TypeScript, Socket.IO, Nest Config, and Zod.
 - **Workspace** — pnpm, Git, Husky, lint-staged, Prettier, and ESLint.
 
 ## Setup on Windows
@@ -77,6 +77,7 @@ Real environment files are ignored by Git.
    pnpm --filter @draw-and-guess/web test:drawing
    pnpm --filter @draw-and-guess/web test:guessing
    pnpm --filter @draw-and-guess/web test:lifecycle
+   pnpm --filter @draw-and-guess/web test:isolation
    ```
 
    The health response is `{"status":"ok"}`. For a customized setup, set `NEXT_PUBLIC_SOCKET_URL` and `FRONTEND_URL` in the terminal before running the checks. The room integration test measures acknowledgement and peer-update timings. Set `NODE_ENV=development` on the API process to include a send timestamp for the browser’s development propagation log.
@@ -92,6 +93,19 @@ pnpm --filter @draw-and-guess/api test:guessing
 pnpm --filter @draw-and-guess/api test:lifecycle
 pnpm --filter @draw-and-guess/web test:drawing-client
 ```
+
+### Browser verification
+
+With the apps running and Chrome installed, run the three-session gameplay and refresh checks. The optional test runner can live outside the workspace.
+
+```powershell
+$qa = Join-Path $env:TEMP 'draw-guess-browser-tests'
+npm install --prefix $qa --no-save playwright-core@1.65.1
+$env:PLAYWRIGHT_PACKAGE_DIR = $qa
+pnpm --filter @draw-and-guess/web test:e2e
+```
+
+Set `FRONTEND_URL` and `NEXT_PUBLIC_SOCKET_URL` for custom app URLs. Set `QA_CHROME_PATH` if Chrome is installed in a custom location.
 
 ## Structure
 

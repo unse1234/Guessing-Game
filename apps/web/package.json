@@ -13,7 +13,9 @@
     "test:drawing": "node --test scripts/check-drawing.mjs",
     "test:drawing-client": "node --test scripts/drawing-client.test.mjs",
     "test:guessing": "node --test scripts/check-guessing.mjs",
-    "test:lifecycle": "node --test scripts/check-lifecycle.mjs"
+    "test:lifecycle": "node --test scripts/check-lifecycle.mjs",
+    "test:isolation": "node --test scripts/check-isolation.mjs",
+    "test:e2e": "node --test scripts/check-browser.mjs"
   },
   "dependencies": {
     "@draw-and-guess/shared": "workspace:*",
