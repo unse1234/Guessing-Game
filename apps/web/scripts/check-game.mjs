@@ -206,7 +206,7 @@ test('authenticated start, private words, refresh, explicit choice and duplicate
   assert.deepEqual(success(chosen.response), drawing.game);
   assert.equal(drawing.game.phase, 'drawing');
   assert.equal(confirmation.word, selected.word);
-  assert.equal(drawing.game.maskedWord, '_'.repeat(selected.word.length));
+  assert.equal(drawing.game.maskedWord, selected.word.replace(/\p{L}/gu, '_'));
   assert.ok(!JSON.stringify(drawing.game).includes(selected.word));
   assert.ok(drawing.game.phaseEndsAt - drawing.game.serverTime >= 59_995);
   assert.equal(

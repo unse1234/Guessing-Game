@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import test from 'node:test';
 import drawingModule from '../dist/drawing/drawing.service.js';
 import gameModule from '../dist/game/game.service.js';
@@ -407,7 +408,9 @@ test('finishes after grace expiry, restores final results, and restarts only the
 
 test('finished games authorize replay using the current host and server ranks are deterministic', (t) => {
   const f = fixture(t, 3);
+  t.mock.method(crypto, 'randomInt', () => 0);
   const initial = success(f.start());
+  const firstOptions = f.view('socket0').privateWord.options;
   for (let i = 0; i < 6; i++) {
     const drawer = `socket${i % 3}`;
     f.draw(drawer);
@@ -431,6 +434,8 @@ test('finished games authorize replay using the current host and server ranks ar
   assert.equal(f.rooms.getSnapshot(f.code).hostId, f.people[1].playerId);
   success(f.games.restart('socket1', request));
   assert.equal(f.rooms.getSnapshot(f.code).players.length, 2);
+  success(f.start('socket1'));
+  assert.deepEqual(f.view('socket1').privateWord.options, firstOptions);
   const players = [
     { id: 'one', nickname: 'One' },
     { id: 'two', nickname: 'Two' },

@@ -329,8 +329,8 @@ test(
     const chat = guest.getByRole('log');
     await chat.getByText(literalGuess, { exact: true }).waitFor(wait);
     assert.equal(await chat.locator('b').count(), 0);
-    for (const prefix of ['One', 'Two']) {
-      const message = `${prefix} lengthy guess to verify the mobile chat can scroll through more text.`;
+    for (const repetitions of [3, 4]) {
+      const message = 'Please try again. '.repeat(repetitions).trim();
       await submit(guest, message, true);
       await chat.getByText(message, { exact: true }).waitFor(wait);
     }
@@ -488,13 +488,18 @@ test(
         .waitFor(wait);
       assert.equal(await input(first).isDisabled(), true);
       assert.equal(await second.getByText(/Correct! \+\d+ points/).count(), 0);
-      await submit(second, word, true);
-      if (turn === 5) break;
-      for (const page of pages) {
-        const summary = dialog(page, 'Turn Complete');
-        await summary.getByText(word, { exact: true }).waitFor(wait);
-        assert.equal(await summary.getByRole('row').count(), 4);
+      if (turn === 5) {
+        await submit(second, word, true);
+        break;
       }
+      await Promise.all([
+        ...pages.map(async (page) => {
+          const summary = dialog(page, 'Turn Complete');
+          assert.equal(await summary.locator('strong').textContent(wait), word);
+          assert.equal(await summary.getByRole('row').count(), 4);
+        }),
+        submit(second, word, true),
+      ]);
       const awards = await dialog(host, 'Turn Complete')
         .locator('tbody tr')
         .evaluateAll((rows) =>

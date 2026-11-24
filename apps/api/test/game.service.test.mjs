@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import test from 'node:test';
 import gameModule from '../dist/game/game.service.js';
 import roomsModule from '../dist/rooms/rooms.service.js';
@@ -103,7 +104,7 @@ test('validates choices, keeps words private, and restores original deadlines af
     }),
   );
   assert.equal(drawing.phase, 'drawing');
-  assert.equal(drawing.maskedWord, '_'.repeat(options[1].length));
+  assert.equal(drawing.maskedWord, options[1].replace(/\p{L}/gu, '_'));
   assert.ok(!('selectedWord' in drawing) && !('options' in drawing));
   assert.equal(
     games.choose('host-new', {
@@ -143,6 +144,15 @@ test('fake timers auto-select, end drawing, reject late selections, and cancel o
   const [selectionTimer] = timers;
   assert.equal(selecting.phaseEndsAt, 115_000);
   assert.equal(selectionTimer.due, selecting.phaseEndsAt);
+  const random = t.mock.method(crypto, 'randomInt', (max) => {
+    assert.equal(max, options.length);
+    return 2;
+  });
+  now = 114_999;
+  assert.equal(
+    success(games.getView('host', code)).game.phase,
+    'word_selection',
+  );
   now = 115_000;
   assert.equal(
     games.choose('host', {
@@ -157,7 +167,8 @@ test('fake timers auto-select, end drawing, reject late selections, and cancel o
   assert.equal(selectionTimer.cleared, true);
   selectionTimer.fn();
   assert.equal(updates.length, 2);
-  assert.equal(updates[1].privateWord.word, options[0]);
+  assert.equal(updates[1].privateWord.word, options[2]);
+  assert.equal(random.mock.callCount(), 1);
   assert.equal(drawingTimer.due, 175_000);
   now = 175_000;
   drawingTimer.fn();
@@ -169,6 +180,67 @@ test('fake timers auto-select, end drawing, reject late selections, and cancel o
   rooms.leave('host');
   rooms.leave('guest');
   assert.equal(games.getView('host', code).error.code, 'ROOM_NOT_FOUND');
+});
+
+test('a manual choice made just before the deadline wins over the expired selection timer', (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 50_000 });
+  const { games, rooms, code, updates } = fixture(t);
+  success(rooms.join('guest', code, 'Ali'));
+  const selecting = success(games.start('host', { code, generation: 0 }));
+  const options = success(games.getView('host', code)).privateWord.options;
+  t.mock.timers.tick(14_999);
+  const drawing = success(
+    games.choose('host', {
+      code,
+      turnId: selecting.turnId,
+      revision: selecting.revision,
+      word: options[1],
+    }),
+  );
+  t.mock.timers.tick(1);
+  assert.equal(updates.length, 2);
+  const view = success(games.getView('host', code));
+  assert.equal(view.privateWord.word, options[1]);
+  assert.equal(view.game.phaseEndsAt, drawing.phaseEndsAt);
+});
+
+test('separate rooms can draw the same options and advance their word pools independently', (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 50_000 });
+  const { games, rooms, code } = fixture(t);
+  const other = success(rooms.create('other', 'Other host')).room.code;
+  success(rooms.join('guest', code, 'Ali'));
+  success(rooms.join('other-guest', other, 'Usman'));
+  t.mock.method(crypto, 'randomInt', () => 0);
+  const first = success(games.start('host', { code, generation: 0 }));
+  success(games.start('other', { code: other, generation: 0 }));
+  const options = success(games.getView('host', code)).privateWord.options;
+  assert.deepEqual(
+    success(games.getView('other', other)).privateWord.options,
+    options,
+  );
+  success(
+    games.choose('host', {
+      code,
+      turnId: first.turnId,
+      revision: first.revision,
+      word: options[0],
+    }),
+  );
+  success(
+    games.submitGuess('guest', {
+      code,
+      turnId: first.turnId,
+      requestId: '1'.repeat(32),
+      guess: options[0],
+    }),
+  );
+  t.mock.timers.tick(5_000);
+  const next = success(games.getView('guest', code)).privateWord.options;
+  assert.equal(new Set([...options, ...next]).size, 6);
+  assert.deepEqual(
+    success(games.getView('other', other)).privateWord.options,
+    options,
+  );
 });
 
 test('a drawer who leaves during selection forfeits and reaches results when alone', (t) => {

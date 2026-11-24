@@ -118,7 +118,11 @@ test('scores each player once, uses the server deadline, caps the drawer bonus, 
     'GUESS_CLOSED',
   );
   const fullWidth = [...f.word.toUpperCase()]
-    .map((c) => String.fromCharCode(c.charCodeAt(0) + 0xfee0))
+    .map((c) =>
+      c === ' '
+        ? '\u3000\u3000'
+        : String.fromCharCode(c.charCodeAt(0) + 0xfee0),
+    )
     .join('');
   const first = f.payload(` \u00a0${fullWidth} `);
   const awarded = success(f.games.submitGuess('guest0', first));
@@ -157,7 +161,7 @@ test('scores each player once, uses the server deadline, caps the drawer bonus, 
 test('keeps the answer private, deduplicates public messages, and restores a stable room identity', (t) => {
   const f = fixture(t);
   const drawing = f.begin();
-  const wrong = f.payload('Motor vehicle?');
+  const wrong = f.payload('Something else');
   assert.equal(
     success(f.games.submitGuess('guest0', wrong)).activity.message,
     wrong.guess,
@@ -168,9 +172,19 @@ test('keeps the answer private, deduplicates public messages, and restores a sta
   );
   assert.equal(success(f.submit('guest0', `${f.word}!`)).activity.message, '…');
   const correct = success(f.submit('guest0', f.word.toLowerCase()));
-  assert.ok(!JSON.stringify(correct.activity).includes(f.word));
-  assert.equal(f.view('guest1').guessing.myPoints, null);
-  assert.ok(!JSON.stringify(f.view('guest1')).includes(f.word));
+  assert.deepEqual(Object.keys(correct.activity).sort(), [
+    'kind',
+    'playerId',
+    'playerName',
+    'roomCode',
+    'scores',
+    'sequence',
+    'turnId',
+  ]);
+  const peer = f.view('guest1');
+  assert.equal(peer.guessing.myPoints, null);
+  assert.equal(peer.privateWord, undefined);
+  assert.equal(peer.game.summary, undefined);
 
   f.rooms.disconnect('guest0');
   f.tick(3_000);
@@ -189,7 +203,7 @@ test('keeps the answer private, deduplicates public messages, and restores a sta
 
 test('chat handles compound text consistently for candidate words regardless of the answer', (t) => {
   const { begin, word, submit, view } = fixture(t);
-  const alternative = word === 'Bicycle' ? 'Elephant' : 'Bicycle';
+  const alternative = word === 'owl' ? 'key' : 'owl';
   begin();
   for (const candidate of [word, alternative]) {
     const result = success(submit('guest0', `${candidate}?`));

@@ -28,7 +28,7 @@ stateDiagram-v2
     finished --> waiting: Host selects Play Again
 ```
 
-The server schedules two rotations of the initial roster. Members who leave permanently lose future slots and retain earned points. The server gives the drawer three private options and 15 seconds to choose. On timeout it picks the first option. Drawing lasts up to 60 seconds. Between turns, a five-second summary reveals the answer when one was selected and shows awards. When no further turn can be played, the server publishes final standings immediately. Replay keeps the room and membership while the next start creates a new game with zero scores.
+The server schedules two rotations of the initial roster. Members who leave permanently lose future slots and retain earned points. The server draws three private options without replacement from each game's word pool. On timeout it randomly picks one of those same options. Drawing lasts up to 60 seconds. Between turns, a five-second summary reveals the answer when one was selected and shows awards. When no further turn can be played, the server publishes final standings immediately. Replay keeps the room and membership while the next start creates a new game with zero scores and a fresh word pool. [Word bank and sources](word-bank.md)
 
 Each active game has one timer for its current phase. It publishes absolute deadlines and server time for the browser countdown. A timer verifies the game and revision before changing state. Closing a room or stopping the API cancels its timers. Revision, game, and turn identifiers protect against stale actions and snapshots.
 

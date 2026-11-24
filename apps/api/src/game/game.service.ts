@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import { Injectable, type OnModuleDestroy } from '@nestjs/common';
 import {
   GUESS_HISTORY_LIMIT,
@@ -24,7 +24,8 @@ import {
 import { RoomsService } from '../rooms/rooms.service';
 import { rankPlayerScores, scoreCorrectGuess } from '../scoring/scoring';
 import { gameConfig } from './game-config';
-import { pickWordOptions, publicGuessText } from './word-bank';
+import { normalizeGuess, publicGuessText, wordBank } from './words/word-bank';
+import { WordPool } from './words/word-pool';
 
 const guessBurst = 4;
 const guessRefillMs = 500;
@@ -35,10 +36,6 @@ interface Guesser {
   receipts: Map<string, GuessReceipt>;
   tokens: number;
   lastRefill: number;
-}
-
-function normalizeGuess(value: string) {
-  return value.normalize('NFKC').toLowerCase().replace(/\s+/gu, ' ').trim();
 }
 
 interface ActiveTurn {
@@ -66,7 +63,7 @@ interface ActiveGame {
   currentTurn: number;
   totalTurns: number;
   turn: ActiveTurn | null;
-  usedWords: Set<string>;
+  wordPool: WordPool;
   scores: Map<string, number>;
   phase: Exclude<GamePhase, 'waiting'>;
   revision: number;
@@ -156,7 +153,7 @@ export class GameService implements OnModuleDestroy {
       currentTurn: 0,
       totalTurns: roster.length * gameConfig.totalRounds,
       turn: null,
-      usedWords: new Set(),
+      wordPool: new WordPool(wordBank),
       scores: new Map(roster.map(({ id }) => [id, 0])),
       phase: 'word_selection',
       revision: 0,
@@ -325,8 +322,7 @@ export class GameService implements OnModuleDestroy {
   private beginTurn(game: ActiveGame, slot: number, room?: RoomSnapshot) {
     const drawerId = game.roster[slot % game.roster.length].id;
     const guesserIds = [...game.eligible].filter((id) => id !== drawerId);
-    const options = pickWordOptions(game.usedWords);
-    for (const word of options) game.usedWords.add(word);
+    const options = game.wordPool.takeOptions();
     game.slot = slot;
     game.currentTurn++;
     const now = performance.now();
@@ -437,7 +433,7 @@ export class GameService implements OnModuleDestroy {
       finishedAt: Date.now(),
     };
     game.turn = null;
-    game.usedWords.clear();
+    game.wordPool.release();
     this.transition(game, 'finished', null, room);
   }
 
@@ -445,7 +441,8 @@ export class GameService implements OnModuleDestroy {
     if (game.deadline === null || Date.now() < game.deadline) return;
 
     if (game.phase === 'word_selection' && game.turn) {
-      this.beginDrawing(game, game.turn, game.turn.options[0]);
+      const { options } = game.turn;
+      this.beginDrawing(game, game.turn, options[randomInt(options.length)]);
     } else if (game.phase === 'drawing') {
       this.endTurn(game, 'time_expired');
     } else if (game.phase === 'turn_summary') {

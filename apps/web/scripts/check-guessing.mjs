@@ -168,7 +168,11 @@ test('live guesses, private scoring receipts, ordered recovery, and automatic ea
     { playerId: firstSession.playerId, points: receipt.pointsAwarded },
     { playerId: hostSession.playerId, points: 50 },
   ]);
-  assert.ok(!JSON.stringify(observed).includes(word));
+  for (const { payload } of observed) {
+    assert.equal(payload?.options, undefined);
+    assert.equal(payload?.word, undefined);
+    assert.equal(payload?.selectedWord, undefined);
+  }
   assert.deepEqual(
     observed.map(({ event }) => event),
     [
@@ -196,7 +200,9 @@ test('live guesses, private scoring receipts, ordered recovery, and automatic ea
   assert.deepEqual(restored.guessing.correct, [notice.msg]);
   assert.equal(restored.guessing.myPoints, receipt.pointsAwarded);
   assert.equal(other.guessing.myPoints, null);
-  assert.ok(!JSON.stringify(other).includes(word));
+  assert.equal(other.privateWord, undefined);
+  assert.equal(other.game.summary, undefined);
+  assert.equal(other.game.maskedWord, word.replace(/\p{L}/gu, '_'));
   assert.equal(
     (await request(refreshed, events.guessSubmit, payload(word))).error.code,
     'ALREADY_GUESSED',
