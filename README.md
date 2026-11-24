@@ -1,6 +1,6 @@
 # Draw & Guess
 
-Draw & Guess is a browser-based multiplayer drawing and guessing game. The live lobby supports up to eight players. The server runs the first turn through word selection and drawing. The canvas is local to the drawer and the results screen is a UI preview.
+Draw & Guess is a browser-based multiplayer drawing and guessing game. The live lobby supports up to eight players. The server runs the first turn through word selection and synchronizes the drawer's canvas. The results screen is a UI preview.
 
 ## Stack
 
@@ -74,6 +74,7 @@ Real environment files are ignored by Git.
    pnpm --filter @draw-and-guess/web test:connection
    pnpm --filter @draw-and-guess/web test:rooms
    pnpm --filter @draw-and-guess/web test:game
+   pnpm --filter @draw-and-guess/web test:drawing
    ```
 
    The health response is `{"status":"ok"}`. For a customized setup, set `NEXT_PUBLIC_SOCKET_URL` and `FRONTEND_URL` in the terminal before running the checks. The room integration test measures acknowledgement and peer-update timings. Set `NODE_ENV=development` on the API process to include a send timestamp for the browser’s development propagation log.
@@ -84,6 +85,8 @@ Run the room and game service unit tests against the compiled API:
 pnpm build
 pnpm --filter @draw-and-guess/api test:rooms
 pnpm --filter @draw-and-guess/api test:game
+pnpm --filter @draw-and-guess/api test:drawing
+pnpm --filter @draw-and-guess/web test:drawing-client
 ```
 
 ## Structure
@@ -135,3 +138,11 @@ The frontend reuses one Socket.IO client per tab across Home, Lobby, and Game. Z
 The host can start with at least two connected players. The server selects the first connected player in room order as drawer and sends that player three private word options. It broadcasts public state and absolute deadlines as each phase changes. If the drawer misses the 15-second selection deadline, the server chooses the first offered option. The 60-second drawing phase then ends at `turn_ended`.
 
 If the drawer leaves or expires during the first turn, the same deadlines still run. The turn ends without selecting a replacement drawer. Empty rooms cancel their game timers immediately. The round indicator counts one planned turn per player connected at game start. Phase 2 runs only the first turn.
+
+## Phase 3
+
+After choosing a word, draw in one window and watch in another. Try changing size and color, erasing a line, refreshing the guesser, and clearing the canvas. Use separate profiles so each window has its own room membership.
+
+The drawer renders input locally on the 900 × 600 logical canvas. Preview packets carry up to 64 new coordinate pairs about every 24 ms. Slow transports may skip previews. A reliable final stroke replaces the preview with complete coordinates. Eraser strokes use the same ordered replay as pen strokes.
+
+Reconnect restores the current turn and deadline, then loads an authoritative canvas snapshot. If a disconnect interrupts an unfinished stroke, the server preserves the prefix it received. Clear advances the canvas version, so older packets are rejected. The server caps a stroke at 1,536 points and a canvas at 256 strokes or 24,576 points. A separate turn budget remains in effect across clears. Drawing state lives in memory and is released when the room closes.

@@ -55,6 +55,10 @@ export const ROOM_ERROR_MESSAGES = {
   INVALID_WORD: 'Choose one of the words offered to you.',
   WRONG_PHASE: 'The game is no longer accepting word choices for this turn.',
   DEADLINE_PASSED: 'The word selection time has expired.',
+  STALE_CANVAS: 'The canvas changed. Restoring its current state.',
+  INVALID_STROKE: 'This drawing operation could not be applied.',
+  DRAWING_LIMIT:
+    'The drawing limit was reached. Clear the canvas or wait for the turn to end.',
   ALREADY_IN_ROOM:
     'You are already in a room. Leave it before joining another.',
   NOT_IN_ROOM: 'You are no longer in this room.',
@@ -89,6 +93,7 @@ export type GamePhase = 'waiting' | 'word_selection' | 'drawing' | 'turn_ended';
 
 export interface PublicGameState {
   roomCode: string;
+  turnId: string | null;
   revision: number;
   phase: GamePhase;
   currentDrawerId: string | null;
@@ -119,12 +124,46 @@ export interface GameView {
   privateWord?: PrivateGameWord;
 }
 
-export interface DrawingStroke {
+export const DRAWING_WIDTH = 900;
+export const DRAWING_HEIGHT = 600;
+export const MIN_BRUSH_SIZE = 2;
+export const MAX_BRUSH_SIZE = 30;
+export const DRAW_BATCH_MS = 24;
+export const MAX_DRAW_BATCH_POINTS = 64;
+export const MAX_DRAW_STROKE_POINTS = 1_536;
+export type DrawingTool = 'pen' | 'eraser';
+export interface BrushSettings {
+  tool: DrawingTool;
   color: string;
-  width: number;
-  points: Array<{ x: number; y: number }>;
+  size: number;
 }
 
+export interface DrawingStroke extends BrushSettings {
+  id: string;
+  points: number[];
+}
+
+export interface DrawingScope {
+  turnId: string;
+  canvasVersion: number;
+}
+export interface DrawingReceipt extends DrawingScope {
+  revision: number;
+}
+export interface DrawingStarted extends DrawingReceipt {
+  stroke: DrawingStroke;
+}
+export interface DrawingBatch extends DrawingReceipt {
+  id: string;
+  sequence: number;
+  points: number[];
+  sentAt?: number;
+}
+export type DrawingEnded = DrawingStarted;
+export interface DrawingSnapshot extends DrawingReceipt {
+  strokes: DrawingStroke[];
+  active: { stroke: DrawingStroke; nextSequence: number } | null;
+}
 export interface ScoreEntry {
   playerId: string;
   points: number;

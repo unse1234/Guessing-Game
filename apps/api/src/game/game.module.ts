@@ -3,5 +3,9 @@ import { RoomsModule } from '../rooms/rooms.module';
 import { GameGateway } from './game.gateway';
 import { GameService } from './game.service';
 
-@Module({ imports: [RoomsModule], providers: [GameService, GameGateway] })
+@Module({
+  imports: [RoomsModule],
+  providers: [GameService, GameGateway],
+  exports: [GameService],
+})
 export class GameModule {}

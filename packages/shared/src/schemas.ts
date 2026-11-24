@@ -1,4 +1,12 @@
 import { z } from 'zod';
+import {
+  DRAWING_HEIGHT,
+  DRAWING_WIDTH,
+  MAX_BRUSH_SIZE,
+  MAX_DRAW_BATCH_POINTS,
+  MAX_DRAW_STROKE_POINTS,
+  MIN_BRUSH_SIZE,
+} from './types';
 
 export const pingSchema = z.object({ sentAt: z.number().int().nonnegative() });
 export const pongSchema = pingSchema.extend({
@@ -31,4 +39,40 @@ export const gameRoomSchema = z.strictObject({ code: roomCodeSchema });
 export const wordChooseSchema = gameRoomSchema.extend({
   revision: z.number().int().positive(),
   word: z.string().min(1).max(40),
+});
+
+export const drawSyncSchema = z.strictObject({ turnId: z.uuid() });
+export const drawClearSchema = drawSyncSchema.extend({
+  canvasVersion: z.number().int().nonnegative(),
+});
+const strokeId = z.string().regex(/^[0-9a-f]{32}$/);
+const x = z.number().int().min(0).max(DRAWING_WIDTH);
+const y = z.number().int().min(0).max(DRAWING_HEIGHT);
+function pointsSchema(limit: number) {
+  return z
+    .array(z.number().int().min(0).max(DRAWING_WIDTH))
+    .min(2)
+    .max(limit * 2)
+    .refine(
+      (points) =>
+        points.length % 2 === 0 &&
+        points.every((value, i) => i % 2 === 0 || value <= DRAWING_HEIGHT),
+    );
+}
+
+export const drawStartSchema = drawClearSchema.extend({
+  id: strokeId,
+  tool: z.enum(['pen', 'eraser']),
+  color: z.string().regex(/^#[0-9a-f]{6}$/i),
+  size: z.number().int().min(MIN_BRUSH_SIZE).max(MAX_BRUSH_SIZE),
+  point: z.tuple([x, y]),
+});
+export const drawPointsSchema = drawClearSchema.extend({
+  id: strokeId,
+  sequence: z.number().int().nonnegative().max(MAX_DRAW_STROKE_POINTS),
+  points: pointsSchema(MAX_DRAW_BATCH_POINTS),
+});
+export const drawEndSchema = drawClearSchema.extend({
+  id: strokeId,
+  points: pointsSchema(MAX_DRAW_STROKE_POINTS),
 });

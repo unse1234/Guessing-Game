@@ -1,21 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type {
-  BrushSettings,
-  DrawingPoint,
-  DrawingStroke,
-} from '@/features/game/types/drawing';
+import {
+  MAX_DRAW_STROKE_POINTS,
+  type BrushSettings,
+  type DrawingStroke,
+} from '@draw-and-guess/shared';
+import type { DrawingPoint } from '@/features/game/types/drawing';
+
+interface StrokeHandlers {
+  start: (stroke: DrawingStroke) => boolean;
+  point: () => void;
+  finish: (stroke: DrawingStroke) => void;
+}
 
 interface ActiveStroke {
   pointerId: number;
   stroke: DrawingStroke;
 }
 
-export function useDrawing() {
-  const [strokes, setStrokes] = useState<DrawingStroke[]>([]);
+export function useDrawing(handlers: StrokeHandlers) {
   const [preview, setPreview] = useState<DrawingStroke | null>(null);
   const active = useRef<ActiveStroke | null>(null);
   const frame = useRef<number | null>(null);
-  const sequence = useRef(0);
 
   const cancelFrame = useCallback(() => {
     if (frame.current !== null) {
@@ -28,12 +33,11 @@ export function useDrawing() {
 
   function start(pointerId: number, point: DrawingPoint, brush: BrushSettings) {
     if (active.current) return false;
-
-    const stroke = {
-      ...brush,
-      id: `local-${++sequence.current}`,
-      points: [point.x, point.y],
-    };
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (value) =>
+      value.toString(16).padStart(2, '0'),
+    ).join('');
+    const stroke = { ...brush, id, points: [point.x, point.y] };
+    if (!handlers.start(stroke)) return false;
     active.current = { pointerId, stroke };
     setPreview({ ...stroke, points: [...stroke.points] });
     return true;
@@ -42,23 +46,18 @@ export function useDrawing() {
   function append(pointerId: number, { x, y }: DrawingPoint) {
     const current = active.current;
     if (current?.pointerId !== pointerId) return;
-
     const points = current.stroke.points;
-    if (
-      Math.hypot(x - points[points.length - 2], y - points[points.length - 1]) <
-      1
-    )
+    if (points.length >= MAX_DRAW_STROKE_POINTS * 2) return;
+    if (x === points[points.length - 2] && y === points[points.length - 1])
       return;
 
-    // Keep the points being built separate from the snapshots used by React.
     points.push(x, y);
+    handlers.point();
     if (frame.current === null) {
       frame.current = requestAnimationFrame(() => {
         frame.current = null;
-        if (active.current) {
-          const stroke = active.current.stroke;
-          setPreview({ ...stroke, points: [...stroke.points] });
-        }
+        const stroke = active.current?.stroke;
+        if (stroke) setPreview({ ...stroke, points: [...stroke.points] });
       });
     }
   }
@@ -66,19 +65,11 @@ export function useDrawing() {
   function finish(pointerId: number) {
     const current = active.current;
     if (current?.pointerId !== pointerId) return;
-
     active.current = null;
     cancelFrame();
-    setStrokes((previous) => [...previous, current.stroke]);
     setPreview(null);
+    handlers.finish(current.stroke);
   }
 
-  const clear = useCallback(() => {
-    active.current = null;
-    cancelFrame();
-    setStrokes([]);
-    setPreview(null);
-  }, [cancelFrame]);
-
-  return { strokes, preview, start, append, finish, clear };
+  return { preview, start, append, finish };
 }

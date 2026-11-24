@@ -9,7 +9,8 @@
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "test:rooms": "node --test test/rooms.service.test.mjs",
-    "test:game": "node --test test/game.service.test.mjs"
+    "test:game": "node --test test/game.service.test.mjs",
+    "test:drawing": "node --test test/drawing.service.test.mjs"
   },
   "dependencies": {
     "@draw-and-guess/shared": "workspace:*",

@@ -1,22 +1,16 @@
-export type DrawingTool = 'pen' | 'eraser';
-
-export interface BrushSettings {
-  tool: DrawingTool;
-  color: string;
-  size: number;
-}
-
-export interface DrawingStroke extends BrushSettings {
-  id: string;
-  points: number[];
-}
+export {
+  DRAWING_WIDTH,
+  DRAWING_HEIGHT,
+  MIN_BRUSH_SIZE,
+  MAX_BRUSH_SIZE,
+} from '@draw-and-guess/shared';
+export type {
+  DrawingTool,
+  BrushSettings,
+  DrawingStroke,
+} from '@draw-and-guess/shared';
 
 export interface DrawingPoint {
   x: number;
   y: number;
 }
-
-export const DRAWING_WIDTH = 900;
-export const DRAWING_HEIGHT = 600;
-export const MIN_BRUSH_SIZE = 2;
-export const MAX_BRUSH_SIZE = 30;

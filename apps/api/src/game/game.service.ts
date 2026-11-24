@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, type OnModuleDestroy } from '@nestjs/common';
 import {
   roomError,
@@ -16,6 +17,7 @@ const drawingMs = 60_000;
 
 interface ActiveGame {
   code: string;
+  turnId: string;
   drawerId: string;
   totalTurns: number;
   phase: Exclude<GamePhase, 'waiting'>;
@@ -36,14 +38,30 @@ export interface GameTransition {
 export class GameService implements OnModuleDestroy {
   private readonly games = new Map<string, ActiveGame>();
   private readonly unsubscribe: () => void;
-  private publish?: (transition: GameTransition) => void;
+  private readonly listeners = new Set<(transition: GameTransition) => void>();
 
   constructor(private readonly rooms: RoomsService) {
     this.unsubscribe = rooms.onRoomClosed((code) => this.removeGame(code));
   }
 
   onTransition(publish: (transition: GameTransition) => void) {
-    this.publish = publish;
+    this.listeners.add(publish);
+    return () => {
+      this.listeners.delete(publish);
+    };
+  }
+
+  getDrawingTurn(code: string) {
+    const game = this.games.get(code);
+    if (!game || game.phase === 'word_selection') return;
+    return {
+      turnId: game.turnId,
+      drawerId: game.drawerId,
+      writable:
+        game.phase === 'drawing' &&
+        game.deadline !== null &&
+        Date.now() < game.deadline,
+    };
   }
 
   start(socketId: string, code: string): RoomResponse<PublicGameState> {
@@ -61,6 +79,7 @@ export class GameService implements OnModuleDestroy {
 
     const game: ActiveGame = {
       code,
+      turnId: randomUUID(),
       drawerId: eligible[0].id,
       totalTurns: eligible.length,
       phase: 'word_selection',
@@ -75,7 +94,7 @@ export class GameService implements OnModuleDestroy {
     this.games.set(code, game);
     this.schedule(game);
     const snapshot = this.snapshot(game);
-    this.publish?.({
+    this.publish({
       game: snapshot,
       privateWord: this.privateWord(game),
       room: playingRoom,
@@ -117,6 +136,7 @@ export class GameService implements OnModuleDestroy {
         data: {
           game: {
             roomCode: code,
+            turnId: null,
             phase: 'waiting',
             revision: 0,
             currentDrawerId: null,
@@ -141,7 +161,7 @@ export class GameService implements OnModuleDestroy {
 
   onModuleDestroy() {
     this.unsubscribe();
-    this.publish = undefined;
+    this.listeners.clear();
     for (const game of this.games.values()) clearTimeout(game.timer);
     this.games.clear();
   }
@@ -159,7 +179,7 @@ export class GameService implements OnModuleDestroy {
     game.deadline = Date.now() + drawingMs;
     this.schedule(game);
     const snapshot = this.snapshot(game);
-    this.publish?.({ game: snapshot, privateWord: this.privateWord(game) });
+    this.publish({ game: snapshot, privateWord: this.privateWord(game) });
     return snapshot;
   }
 
@@ -174,7 +194,7 @@ export class GameService implements OnModuleDestroy {
       game.phase = 'turn_ended';
       game.revision++;
       game.deadline = null;
-      this.publish?.({ game: this.snapshot(game) });
+      this.publish({ game: this.snapshot(game) });
     }
   }
 
@@ -198,6 +218,7 @@ export class GameService implements OnModuleDestroy {
   private snapshot(game: ActiveGame): PublicGameState {
     return {
       roomCode: game.code,
+      turnId: game.turnId,
       revision: game.revision,
       phase: game.phase,
       currentDrawerId: game.drawerId,
@@ -207,6 +228,10 @@ export class GameService implements OnModuleDestroy {
       maskedWord: game.selectedWord?.replace(/\p{L}/gu, '_') ?? null,
       serverTime: Date.now(),
     };
+  }
+
+  private publish(transition: GameTransition) {
+    for (const listener of this.listeners) listener(transition);
   }
 
   private privateWord(game: ActiveGame): PrivateGameWord | undefined {

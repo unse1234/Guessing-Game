@@ -82,9 +82,6 @@ export function GameScreen({ code }: { code: string }) {
                 {status}
                 {drawer && connected ? ` · Drawer: ${drawer.nickname}` : ''}
               </p>
-              {connected && drawing && (
-                <span>Canvas is local to the drawer.</span>
-              )}
               {needsRoom && (
                 <Link className="font-medium underline" href={`/room/${code}`}>
                   Go to lobby
@@ -111,6 +108,13 @@ export function GameScreen({ code }: { code: string }) {
             />
             <div className="relative min-w-0">
               <DrawingBoard
+                code={code}
+                turnId={
+                  drawing || game?.phase === 'turn_ended'
+                    ? (game?.turnId ?? null)
+                    : null
+                }
+                connected={connected}
                 canDraw={connected && drawing && isDrawer}
                 readOnly={!isDrawer}
               />

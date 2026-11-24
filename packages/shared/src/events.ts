@@ -8,8 +8,18 @@ import type {
   roomRejoinSchema,
   gameRoomSchema,
   wordChooseSchema,
+  drawStartSchema,
+  drawPointsSchema,
+  drawEndSchema,
+  drawClearSchema,
+  drawSyncSchema,
 } from './schemas';
 import type {
+  DrawingBatch,
+  DrawingEnded,
+  DrawingReceipt,
+  DrawingSnapshot,
+  DrawingStarted,
   GameView,
   PublicGameState,
   RoomAck,
@@ -35,6 +45,12 @@ export const SOCKET_EVENTS = {
   wordOptions: 'word:options',
   wordChoose: 'word:choose',
   wordConfirmed: 'word:confirmed',
+  drawStart: 'draw:start',
+  drawPoints: 'draw:points',
+  drawEnd: 'draw:end',
+  drawClear: 'draw:clear',
+  drawSync: 'draw:sync',
+  drawSnapshot: 'draw:snapshot',
 } as const;
 
 export type Ping = z.infer<typeof pingSchema>;
@@ -45,8 +61,27 @@ export type RoomLeave = z.infer<typeof roomLeaveSchema>;
 export type RoomRejoin = z.infer<typeof roomRejoinSchema>;
 export type GameRoomRequest = z.infer<typeof gameRoomSchema>;
 export type WordChoose = z.infer<typeof wordChooseSchema>;
+export type DrawStart = z.infer<typeof drawStartSchema>;
+export type DrawPoints = z.infer<typeof drawPointsSchema>;
+export type DrawEnd = z.infer<typeof drawEndSchema>;
+export type DrawClear = z.infer<typeof drawClearSchema>;
+export type DrawSync = z.infer<typeof drawSyncSchema>;
 
 export interface ClientToServerEvents {
+  [SOCKET_EVENTS.drawStart]: (
+    payload: DrawStart,
+    ack: RoomAck<DrawingReceipt>,
+  ) => void;
+  [SOCKET_EVENTS.drawPoints]: (payload: DrawPoints) => void;
+  [SOCKET_EVENTS.drawEnd]: (
+    payload: DrawEnd,
+    ack: RoomAck<DrawingReceipt>,
+  ) => void;
+  [SOCKET_EVENTS.drawClear]: (
+    payload: DrawClear,
+    ack: RoomAck<DrawingReceipt>,
+  ) => void;
+  [SOCKET_EVENTS.drawSync]: (payload: DrawSync, ack: RoomAck<null>) => void;
   [SOCKET_EVENTS.ping]: (payload: Ping) => void;
   [SOCKET_EVENTS.roomCreate]: (
     payload: RoomCreate,
@@ -76,6 +111,11 @@ export interface ClientToServerEvents {
 }
 
 export interface ServerToClientEvents {
+  [SOCKET_EVENTS.drawStart]: (stroke: DrawingStarted) => void;
+  [SOCKET_EVENTS.drawPoints]: (batch: DrawingBatch) => void;
+  [SOCKET_EVENTS.drawEnd]: (stroke: DrawingEnded) => void;
+  [SOCKET_EVENTS.drawClear]: (receipt: DrawingReceipt) => void;
+  [SOCKET_EVENTS.drawSnapshot]: (snapshot: DrawingSnapshot) => void;
   [SOCKET_EVENTS.pong]: (payload: Pong) => void;
   [SOCKET_EVENTS.roomUpdated]: (payload: RoomUpdated) => void;
   [SOCKET_EVENTS.roomClosed]: (payload: RoomClosed) => void;

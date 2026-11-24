@@ -47,17 +47,22 @@ export class RoomsService implements OnModuleDestroy {
   private expiryTimer?: ReturnType<typeof setTimeout>;
   private scheduledDeadline?: number;
   private expiryListener?: (change: RoomChange) => void;
-  private closedListener?: (code: string) => void;
+  private readonly closedListeners = new Set<(code: string) => void>();
 
   onExpiry(listener: (change: RoomChange) => void) {
     this.expiryListener = listener;
   }
 
   onRoomClosed(listener: (code: string) => void) {
-    this.closedListener = listener;
+    this.closedListeners.add(listener);
     return () => {
-      if (this.closedListener === listener) this.closedListener = undefined;
+      this.closedListeners.delete(listener);
     };
+  }
+
+  getConnection(socketId: string) {
+    const member = this.connections.get(socketId);
+    return member ? { code: member.room.code, playerId: member.id } : undefined;
   }
 
   authorize(socketId: string, code: string): RoomResponse<string> {
@@ -179,7 +184,7 @@ export class RoomsService implements OnModuleDestroy {
   onModuleDestroy() {
     clearTimeout(this.expiryTimer);
     this.expiryListener = undefined;
-    this.closedListener = undefined;
+    this.closedListeners.clear();
     this.pending.clear();
     this.connections.clear();
     this.sessions.clear();
@@ -245,7 +250,7 @@ export class RoomsService implements OnModuleDestroy {
 
     if (!room.players.size) {
       this.rooms.delete(room.code);
-      this.closedListener?.(room.code);
+      for (const listener of this.closedListeners) listener(room.code);
       return { kind: 'closed', code: room.code };
     }
 

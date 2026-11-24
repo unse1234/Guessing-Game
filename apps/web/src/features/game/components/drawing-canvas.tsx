@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { Circle, Layer, Line, Stage } from 'react-konva';
-import type { useDrawing } from '@/features/game/hooks/use-drawing';
+import { useDrawing } from '@/features/game/hooks/use-drawing';
 import {
   DRAWING_HEIGHT,
   DRAWING_WIDTH,
@@ -13,7 +13,11 @@ import {
 interface DrawingCanvasProps {
   canDraw: boolean;
   brush: BrushSettings;
-  drawing: ReturnType<typeof useDrawing>;
+  strokes: readonly DrawingStroke[];
+  remotePreview: DrawingStroke | null;
+  onStart: (stroke: DrawingStroke) => boolean;
+  onPoint: () => void;
+  onFinish: (stroke: DrawingStroke) => void;
 }
 
 const StrokeShape = memo(function StrokeShape({
@@ -55,11 +59,25 @@ function getDrawingPoint(event: PointerEvent<HTMLDivElement>) {
   const x = ((event.clientX - rect.left) / rect.width) * DRAWING_WIDTH;
   const y = ((event.clientY - rect.top) / rect.height) * DRAWING_HEIGHT;
   return x >= 0 && x <= DRAWING_WIDTH && y >= 0 && y <= DRAWING_HEIGHT
-    ? { x, y }
+    ? { x: Math.round(x), y: Math.round(y) }
     : null;
 }
 
-export function DrawingCanvas({ canDraw, brush, drawing }: DrawingCanvasProps) {
+export function DrawingCanvas({
+  canDraw,
+  brush,
+  strokes,
+  remotePreview,
+  onStart,
+  onPoint,
+  onFinish,
+}: DrawingCanvasProps) {
+  const drawing = useDrawing({
+    start: onStart,
+    point: onPoint,
+    finish: onFinish,
+  });
+  const preview = (canDraw ? drawing.preview : null) ?? remotePreview;
   const surface = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
 
@@ -122,12 +140,10 @@ export function DrawingCanvas({ canDraw, brush, drawing }: DrawingCanvasProps) {
           scaleY={scale}
         >
           <Layer listening={false}>
-            {drawing.strokes.map((stroke) => (
+            {strokes.map((stroke) => (
               <StrokeShape key={stroke.id} stroke={stroke} />
             ))}
-            {drawing.preview && (
-              <StrokeShape key={drawing.preview.id} stroke={drawing.preview} />
-            )}
+            {preview && <StrokeShape key={preview.id} stroke={preview} />}
           </Layer>
         </Stage>
       )}
