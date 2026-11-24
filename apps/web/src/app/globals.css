@@ -4,35 +4,35 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --font-sans: var(--font-geist);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-card: var(--card);
+  --color-card: var(--surface);
   --color-card-foreground: var(--foreground);
   --color-primary: var(--primary);
-  --color-primary-foreground: var(--background);
-  --color-secondary: var(--surface);
+  --color-primary-foreground: var(--foreground);
+  --color-secondary: var(--surface-secondary);
   --color-secondary-foreground: var(--foreground);
-  --color-muted: var(--surface);
+  --color-highlight: var(--surface-highlight);
+  --color-muted: var(--surface-secondary);
   --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
+  --color-accent: var(--surface-highlight);
   --color-accent-foreground: var(--foreground);
   --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--border);
-  --color-ring: var(--ring);
+  --color-border: var(--surface-highlight);
+  --color-input: var(--primary);
+  --color-ring: var(--foreground);
 }
 
 :root {
-  --background: #181122;
-  --foreground: #f8f6ff;
-  --card: #21152f;
-  --surface: #2e2041;
-  --muted-foreground: #d2c7e0;
-  --primary: #cbff5c;
-  --accent: #45305c;
+  --background: #e3fdfd;
+  --surface-secondary: #cbf1f5;
+  --surface-highlight: #a6e3e9;
+  --primary: #71c9ce;
+  --foreground: #124c53;
+  --surface: #ffffff;
+  --muted-foreground: color-mix(in srgb, var(--foreground) 82%, var(--surface));
   --destructive: #e9698b;
-  --border: #856aa5;
-  --ring: #ba9df1;
 }
 
 @layer base {
@@ -41,6 +41,6 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background font-sans text-foreground;
   }
 }
