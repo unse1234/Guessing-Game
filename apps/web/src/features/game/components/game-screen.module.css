@@ -1,0 +1,94 @@
+.gameGrid {
+  display: grid;
+  grid-template-areas: 'drawing' 'guesses' 'players';
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(0.5rem, 1.6svh, 1rem);
+}
+
+.players {
+  grid-area: players;
+}
+
+.drawing {
+  grid-area: drawing;
+  container-type: inline-size;
+}
+
+.guesses {
+  grid-area: guesses;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.canvasSlot {
+  width: 100%;
+  min-width: 0;
+  justify-self: center;
+  align-self: start;
+}
+
+@container (min-width: 22rem) {
+  .board {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .tools {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
+@container (min-width: 30rem) {
+  .toolbar {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+}
+
+@media (width < 42rem) and (orientation: portrait) {
+  .drawingBoard[data-readonly='true'] .tools,
+  .drawingBoard[data-readonly='true'] .toolbar {
+    display: none;
+  }
+}
+
+@media (min-width: 42rem) {
+  .gameGrid {
+    grid-template-areas: 'drawing drawing' 'players guesses';
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 38rem) and (max-height: 30rem) {
+  .gameGrid {
+    grid-template-areas: 'drawing guesses' 'players players';
+    grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 64rem) {
+  .gameGrid {
+    grid-template-areas: 'players drawing guesses';
+    grid-template-columns:
+      minmax(8.5rem, 1fr)
+      minmax(0, 2.75fr)
+      minmax(10rem, 1.25fr);
+  }
+}
+
+@media (min-width: 38rem) {
+  .canvasSlot {
+    max-width: max(13.5rem, calc((100svh - 11rem) * 1.5));
+  }
+}
+
+@media (min-width: 64rem) and (min-height: 43rem) {
+  .presets {
+    display: grid;
+    gap: 0.25rem;
+  }
+}
