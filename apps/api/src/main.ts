@@ -19,7 +19,7 @@ async function bootstrap() {
     ),
   );
   app.enableShutdownHooks();
-  await app.listen(config.get('PORT', { infer: true }));
+  await app.listen(config.get('PORT', { infer: true }), '0.0.0.0');
 }
 
 void bootstrap();

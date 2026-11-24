@@ -1,0 +1,19 @@
+services:
+  - type: web
+    runtime: node
+    name: draw-and-guess-api
+    plan: 0.5c-512mb
+    numInstances: 1
+    autoDeployTrigger: 'off'
+    healthCheckPath: /health
+    buildCommand: >-
+      HUSKY=0 npx --yes pnpm@12.21.0 install --frozen-lockfile --prod=false &&
+      npx --yes pnpm@12.21.0 --filter @draw-and-guess/api... build
+    startCommand: node apps/api/dist/main.js
+    envVars:
+      - key: NODE_VERSION
+        value: '24.x'
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        sync: false

@@ -19,6 +19,7 @@ async function startApi(t) {
     cwd: new URL('../../api/', import.meta.url),
     env: {
       ...process.env,
+      NODE_ENV: 'production',
       PORT: port,
       FRONTEND_URL: origin,
       MAX_ACTIVE_ROOMS: '1',

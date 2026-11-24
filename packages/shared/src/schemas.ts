@@ -9,6 +9,30 @@ import {
   MIN_BRUSH_SIZE,
 } from './types';
 
+export const httpOriginSchema = z
+  .url({ protocol: /^https?$/ })
+  .pipe(
+    z.string().refine((value) => {
+      const url = new URL(value);
+      return (
+        !url.username &&
+        !url.password &&
+        url.pathname === '/' &&
+        !url.href.includes('?') &&
+        !url.href.includes('#')
+      );
+    }, 'Use an HTTP(S) origin without credentials, path, query, or fragment.'),
+  )
+  .transform((value) => new URL(value).origin);
+
+export const productionOriginSchema = httpOriginSchema.refine((origin) => {
+  const url = new URL(origin);
+  return (
+    url.protocol === 'https:' ||
+    ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+  );
+}, 'Use HTTPS for public origins. HTTP is only allowed on explicit loopback origins.');
+
 export const pingSchema = z.strictObject({
   sentAt: z.number().int().nonnegative(),
 });

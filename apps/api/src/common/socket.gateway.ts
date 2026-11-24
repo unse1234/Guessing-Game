@@ -25,11 +25,13 @@ export class SocketGateway
   private readonly nextPing = new WeakMap<GameSocket, number>();
 
   handleConnection(socket: GameSocket) {
-    this.logger.log(`Connected ${socket.id}`);
+    if (process.env.NODE_ENV === 'development')
+      this.logger.debug(`Connected ${socket.id}`);
   }
 
   handleDisconnect(socket: GameSocket) {
-    this.logger.log(`Disconnected ${socket.id}`);
+    if (process.env.NODE_ENV === 'development')
+      this.logger.debug(`Disconnected ${socket.id}`);
   }
 
   @SubscribeMessage(SOCKET_EVENTS.ping)

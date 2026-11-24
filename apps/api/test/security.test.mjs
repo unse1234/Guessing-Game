@@ -6,7 +6,7 @@ import limitsModule from '../dist/common/socket-limits.js';
 import roomGatewayModule from '../dist/rooms/rooms.gateway.js';
 import roomsModule from '../dist/rooms/rooms.service.js';
 
-const { environmentSchema } = environmentModule;
+const { environmentSchema, validateEnvironment } = environmentModule;
 const { PeerRateLimit, socketLimits } = limitsModule;
 const { RoomsGateway } = roomGatewayModule;
 const { RoomsService } = roomsModule;
@@ -90,6 +90,38 @@ test('validates the configured origin and positive bounded capacities', () => {
     { MAX_SOCKET_CONNECTIONS: 1 },
   ]) {
     assert.equal(environmentSchema.safeParse(values).success, false);
+  }
+});
+
+test('production requires explicit TLS origins, with loopback available for local checks', () => {
+  const NODE_ENV = 'production';
+  assert.equal(environmentSchema.safeParse({ NODE_ENV }).success, false);
+  for (const origin of [
+    'http://play.example.invalid',
+    'https://api.example.invalid/?',
+    'https://api.example.invalid/#',
+    'https://secret:masked@api.example.invalid',
+  ]) {
+    assert.equal(
+      shared.productionOriginSchema.safeParse(origin).success,
+      false,
+    );
+    assert.throws(
+      () => validateEnvironment({ NODE_ENV, FRONTEND_URL: origin }),
+      { message: /^Invalid API environment \(FRONTEND_URL\)\./ },
+    );
+  }
+  for (const origin of [
+    'https://play.example.invalid',
+    'http://localhost:3200',
+    'http://127.0.0.1:3200',
+    'http://[::1]:3200',
+  ]) {
+    assert.equal(shared.productionOriginSchema.parse(`${origin}/`), origin);
+    assert.equal(
+      environmentSchema.parse({ NODE_ENV, FRONTEND_URL: origin }).FRONTEND_URL,
+      origin,
+    );
   }
 });
 

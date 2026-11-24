@@ -1,0 +1,28 @@
+name: CI
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HUSKY: '0'
+      NEXT_PUBLIC_SOCKET_URL: http://localhost:3001
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+      - run: npm install --global pnpm@12.21.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm build
+      - run: pnpm --filter @draw-and-guess/api exec node --test
+      - run: pnpm --filter @draw-and-guess/web test:drawing-client

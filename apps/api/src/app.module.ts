@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { environmentSchema } from './common/environment';
+import { validateEnvironment } from './common/environment';
 import { HealthController } from './common/health.controller';
 import { SocketGateway } from './common/socket.gateway';
 import { DrawingModule } from './drawing/drawing.module';
@@ -11,7 +11,7 @@ import { RoomsModule } from './rooms/rooms.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      validate: (environment) => environmentSchema.parse(environment),
+      validate: validateEnvironment,
     }),
     RoomsModule,
     GameModule,
