@@ -14,7 +14,6 @@ interface DrawingCanvasProps {
   canDraw: boolean;
   brush: BrushSettings;
   drawing: ReturnType<typeof useDrawing>;
-  sample: readonly DrawingStroke[];
 }
 
 const StrokeShape = memo(function StrokeShape({
@@ -60,12 +59,7 @@ function getDrawingPoint(event: PointerEvent<HTMLDivElement>) {
     : null;
 }
 
-export function DrawingCanvas({
-  canDraw,
-  brush,
-  drawing,
-  sample,
-}: DrawingCanvasProps) {
+export function DrawingCanvas({ canDraw, brush, drawing }: DrawingCanvasProps) {
   const surface = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
 
@@ -128,9 +122,6 @@ export function DrawingCanvas({
           scaleY={scale}
         >
           <Layer listening={false}>
-            {sample.map((stroke) => (
-              <StrokeShape key={stroke.id} stroke={stroke} />
-            ))}
             {drawing.strokes.map((stroke) => (
               <StrokeShape key={stroke.id} stroke={stroke} />
             ))}

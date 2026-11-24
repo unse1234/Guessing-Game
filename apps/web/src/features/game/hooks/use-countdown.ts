@@ -1,22 +1,25 @@
 import { useEffect, useState } from 'react';
 
-export function useCountdown(seconds: number, onExpire?: () => void) {
-  const [remaining, setRemaining] = useState(seconds);
+function remainingMs(deadline: number, clockOffsetMs: number) {
+  return Math.max(0, deadline - (Date.now() + clockOffsetMs));
+}
+
+export function useCountdown(deadline: number, clockOffsetMs: number) {
+  const [seconds, setSeconds] = useState(() =>
+    Math.ceil(remainingMs(deadline, clockOffsetMs) / 1_000),
+  );
 
   useEffect(() => {
-    const deadline = Date.now() + seconds * 1_000;
+    let timer: ReturnType<typeof setTimeout>;
+    function tick() {
+      const ms = remainingMs(deadline, clockOffsetMs);
+      setSeconds(Math.ceil(ms / 1_000));
+      if (ms > 0) timer = setTimeout(tick, Math.max(1, ms % 1_000 || 1_000));
+    }
 
-    const interval = window.setInterval(() => {
-      const next = Math.max(0, Math.ceil((deadline - Date.now()) / 1_000));
-      setRemaining(next);
-      if (next === 0) {
-        window.clearInterval(interval);
-        onExpire?.();
-      }
-    }, 200);
+    timer = setTimeout(tick, 0);
+    return () => clearTimeout(timer);
+  }, [deadline, clockOffsetMs]);
 
-    return () => window.clearInterval(interval);
-  }, [onExpire, seconds]);
-
-  return remaining;
+  return seconds;
 }

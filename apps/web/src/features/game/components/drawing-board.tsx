@@ -6,9 +6,9 @@ import {
   DrawingToolbar,
   DrawingTools,
 } from '@/features/game/components/drawing-toolbar';
-import { drawingColors, sampleDrawing } from '@/features/game/data/mock-game';
+import { drawingColors } from '@/features/game/data/drawing-colors';
 import { useDrawing } from '@/features/game/hooks/use-drawing';
-import type { DrawingStroke, DrawingTool } from '@/features/game/types/drawing';
+import type { DrawingTool } from '@/features/game/types/drawing';
 import styles from './game-screen.module.css';
 
 const DrawingCanvas = dynamic(
@@ -27,14 +27,12 @@ const DrawingCanvas = dynamic(
   },
 );
 
-const noSample: readonly DrawingStroke[] = [];
-
 export function DrawingBoard({
   canDraw,
-  showSample,
+  readOnly,
 }: {
   canDraw: boolean;
-  showSample: boolean;
+  readOnly: boolean;
 }) {
   const drawing = useDrawing();
   const [tool, setTool] = useState<DrawingTool>('pen');
@@ -49,7 +47,7 @@ export function DrawingBoard({
   return (
     <div
       className={`${styles.drawingBoard} grid min-w-0 gap-2`}
-      data-readonly={showSample}
+      data-readonly={readOnly}
     >
       <div className={styles.board}>
         <DrawingTools
@@ -65,7 +63,6 @@ export function DrawingBoard({
             canDraw={canDraw}
             brush={{ color, size, tool }}
             drawing={drawing}
-            sample={showSample ? sampleDrawing : noSample}
           />
         </div>
       </div>

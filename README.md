@@ -1,6 +1,6 @@
 # Draw & Guess
 
-Draw & Guess is a browser-based multiplayer drawing and guessing game. Players can create, join, and leave live rooms of up to eight players. The lobby synchronizes membership, host ownership, and online status. The game and results screens are local UI previews.
+Draw & Guess is a browser-based multiplayer drawing and guessing game. The live lobby supports up to eight players. The server runs the first turn through word selection and drawing. The canvas is local to the drawer and the results screen is a UI preview.
 
 ## Stack
 
@@ -66,22 +66,24 @@ Real environment files are ignored by Git.
 1. Run `pnpm dev` and open [the home page](http://localhost:3000). Enter a nickname and select **Create Room**.
 2. Open a separate browser profile or private window, visit the home page, and select **Join Room**. Enter another nickname and the six-character code. You can also open the lobby’s **Copy Link** invitation and select **Join this room**.
 3. Verify that both windows show two players. Refresh the guest window and confirm the same membership returns. To test a temporary disconnect, restore the connection within 15 seconds of the server marking the guest offline.
-4. Select **Leave Room** in the host window. The guest becomes host. **Start Game** remains a placeholder.
+4. Select **Start Game** as the host with both players online. Both windows open the game. Only the drawer sees the three options. Refresh either window to check that the original deadline stays in effect. To verify host transfer, use **Leave Room** in the lobby before starting.
 5. In another terminal, run the checks:
 
    ```powershell
    Invoke-RestMethod -Uri http://localhost:3001/health | ConvertTo-Json -Compress
    pnpm --filter @draw-and-guess/web test:connection
    pnpm --filter @draw-and-guess/web test:rooms
+   pnpm --filter @draw-and-guess/web test:game
    ```
 
    The health response is `{"status":"ok"}`. For a customized setup, set `NEXT_PUBLIC_SOCKET_URL` and `FRONTEND_URL` in the terminal before running the checks. The room integration test measures acknowledgement and peer-update timings. Set `NODE_ENV=development` on the API process to include a send timestamp for the browser’s development propagation log.
 
-Run the service unit tests against the compiled API:
+Run the room and game service unit tests against the compiled API:
 
 ```powershell
 pnpm build
 pnpm --filter @draw-and-guess/api test:rooms
+pnpm --filter @draw-and-guess/api test:game
 ```
 
 ## Structure
@@ -126,8 +128,10 @@ The shared package emits JavaScript and declarations. Nest loads the compiled co
 
 The API owns room membership using in-memory maps for rooms, socket memberships, and reconnect credentials. It sends versioned public snapshots only to affected rooms. On an unexpected disconnect, the server holds the player's membership for 15 seconds using one expiry timer. Host ownership transfers to the next connected player when the host leaves or expires.
 
-The frontend reuses one Socket.IO client per tab across Home and Lobby. Zustand holds the current public snapshot and connection status. A private reconnect credential in `sessionStorage` restores the same player after a refresh or reconnect. Rooms and reconnect credentials are lost on an API restart.
+The frontend reuses one Socket.IO client per tab across Home, Lobby, and Game. Zustand holds public room state and separately tracks the current game and the drawer's private word data. A reconnect credential in `sessionStorage` restores the same player after a refresh or reconnect. The game then requests the current authorized view. Rooms, games, and reconnect credentials are lost on an API restart.
 
 ## Phase 2
 
-Add host-authorized game start and transitions from the live lobby into the game.
+The host can start with at least two connected players. The server selects the first connected player in room order as drawer and sends that player three private word options. It broadcasts public state and absolute deadlines as each phase changes. If the drawer misses the 15-second selection deadline, the server chooses the first offered option. The 60-second drawing phase then ends at `turn_ended`.
+
+If the drawer leaves or expires during the first turn, the same deadlines still run. The turn ends without selecting a replacement drawer. Empty rooms cancel their game timers immediately. The round indicator counts one planned turn per player connected at game start. Phase 2 runs only the first turn.

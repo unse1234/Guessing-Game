@@ -4,7 +4,7 @@ import { Eraser, Pencil, Trash2 } from 'lucide-react';
 import { memo, type CSSProperties } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { drawingColors } from '@/features/game/data/mock-game';
+import { drawingColors } from '@/features/game/data/drawing-colors';
 import {
   MAX_BRUSH_SIZE,
   MIN_BRUSH_SIZE,

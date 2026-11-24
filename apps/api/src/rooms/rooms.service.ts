@@ -6,6 +6,7 @@ import {
   roomError,
   type GameStatus,
   type RoomError,
+  type RoomResponse,
   type RoomSession,
   type RoomSnapshot,
 } from '@draw-and-guess/shared';
@@ -46,9 +47,42 @@ export class RoomsService implements OnModuleDestroy {
   private expiryTimer?: ReturnType<typeof setTimeout>;
   private scheduledDeadline?: number;
   private expiryListener?: (change: RoomChange) => void;
+  private closedListener?: (code: string) => void;
 
   onExpiry(listener: (change: RoomChange) => void) {
     this.expiryListener = listener;
+  }
+
+  onRoomClosed(listener: (code: string) => void) {
+    this.closedListener = listener;
+    return () => {
+      if (this.closedListener === listener) this.closedListener = undefined;
+    };
+  }
+
+  authorize(socketId: string, code: string): RoomResponse<string> {
+    if (!this.rooms.has(code)) return roomError('ROOM_NOT_FOUND');
+    const member = this.connections.get(socketId);
+    return member?.room.code === code
+      ? { ok: true, data: member.id }
+      : roomError('NOT_IN_ROOM');
+  }
+
+  getSnapshot(code: string) {
+    const room = this.rooms.get(code);
+    return room ? this.snapshot(room) : undefined;
+  }
+
+  markPlaying(code: string) {
+    const room = this.rooms.get(code);
+    if (room?.status !== 'waiting') return;
+    room.status = 'playing';
+    room.revision++;
+    return this.snapshot(room);
+  }
+
+  getPlayerSocket(code: string, playerId: string) {
+    return this.rooms.get(code)?.players.get(playerId)?.socketId;
   }
 
   create(socketId: string, nickname: string): MembershipResult {
@@ -145,6 +179,7 @@ export class RoomsService implements OnModuleDestroy {
   onModuleDestroy() {
     clearTimeout(this.expiryTimer);
     this.expiryListener = undefined;
+    this.closedListener = undefined;
     this.pending.clear();
     this.connections.clear();
     this.sessions.clear();
@@ -210,6 +245,7 @@ export class RoomsService implements OnModuleDestroy {
 
     if (!room.players.size) {
       this.rooms.delete(room.code);
+      this.closedListener?.(room.code);
       return { kind: 'closed', code: room.code };
     }
 

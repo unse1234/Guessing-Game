@@ -8,7 +8,8 @@
     "build": "nest build",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
-    "test:rooms": "node --test test/rooms.service.test.mjs"
+    "test:rooms": "node --test test/rooms.service.test.mjs",
+    "test:game": "node --test test/game.service.test.mjs"
   },
   "dependencies": {
     "@draw-and-guess/shared": "workspace:*",

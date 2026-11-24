@@ -1,22 +1,10 @@
+import { roomCodeSchema } from '@draw-and-guess/shared';
+import { notFound } from 'next/navigation';
 import { GameScreen } from '@/features/game/components/game-screen';
 
-export default async function GamePage({
-  params,
-  searchParams,
-}: PageProps<'/game/[code]'>) {
-  const { code } = await params;
-  const development = process.env.NODE_ENV === 'development';
-  const role =
-    development && (await searchParams).role === 'guesser'
-      ? 'guesser'
-      : 'drawer';
+export default async function GamePage({ params }: PageProps<'/game/[code]'>) {
+  const code = roomCodeSchema.safeParse((await params).code);
+  if (!code.success) notFound();
 
-  return (
-    <GameScreen
-      key={JSON.stringify([code, role])}
-      code={code}
-      role={role}
-      allowWordPreview={development}
-    />
-  );
+  return <GameScreen key={code.data} code={code.data} />;
 }

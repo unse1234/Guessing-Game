@@ -49,6 +49,12 @@ export const ROOM_ERROR_MESSAGES = {
   ROOM_NOT_FOUND: 'Room not found. Check the code and try again.',
   ROOM_FULL: 'This room already has eight players.',
   GAME_STARTED: 'The game in this room has already started.',
+  NOT_HOST: 'Only the host can start the game.',
+  NOT_ENOUGH_PLAYERS: 'At least two connected players are needed.',
+  NOT_DRAWER: 'Only the current drawer can choose a word.',
+  INVALID_WORD: 'Choose one of the words offered to you.',
+  WRONG_PHASE: 'The game is no longer accepting word choices for this turn.',
+  DEADLINE_PASSED: 'The word selection time has expired.',
   ALREADY_IN_ROOM:
     'You are already in a room. Leave it before joining another.',
   NOT_IN_ROOM: 'You are no longer in this room.',
@@ -77,6 +83,40 @@ export interface RoomUpdated {
 export interface RoomClosed {
   code: string;
   reason: 'room_closed' | 'session_replaced';
+}
+
+export type GamePhase = 'waiting' | 'word_selection' | 'drawing' | 'turn_ended';
+
+export interface PublicGameState {
+  roomCode: string;
+  revision: number;
+  phase: GamePhase;
+  currentDrawerId: string | null;
+  currentTurn: number;
+  totalTurns: number;
+  phaseEndsAt: number | null;
+  maskedWord: string | null;
+  serverTime: number;
+}
+
+interface PrivateWordScope {
+  roomCode: string;
+  revision: number;
+  drawerId: string;
+}
+
+export type WordOptions = PrivateWordScope & {
+  kind: 'options';
+  options: readonly [string, string, string];
+};
+export type WordConfirmed = PrivateWordScope & {
+  kind: 'confirmed';
+  word: string;
+};
+export type PrivateGameWord = WordOptions | WordConfirmed;
+export interface GameView {
+  game: PublicGameState;
+  privateWord?: PrivateGameWord;
 }
 
 export interface DrawingStroke {

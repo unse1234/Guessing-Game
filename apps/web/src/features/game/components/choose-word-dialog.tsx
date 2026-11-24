@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback } from 'react';
+import type { WordOptions } from '@draw-and-guess/shared';
+import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -10,21 +11,39 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ClockBadge } from '@/features/game/components/word-timer';
-import {
-  chooseWordSeconds,
-  defaultWord,
-  wordChoices,
-  type DemoWord,
-} from '@/features/game/data/mock-game';
 import { useCountdown } from '@/features/game/hooks/use-countdown';
+import { requestGame } from '@/lib/game-client';
+import { getActiveRoomSocket } from '@/lib/room-client';
+import { useGameStore } from '@/stores/game-store';
 
 export function ChooseWordDialog({
-  onChoose,
+  choices,
+  deadline,
 }: {
-  onChoose: (word: DemoWord) => void;
+  choices: WordOptions;
+  deadline: number;
 }) {
-  const chooseFallback = useCallback(() => onChoose(defaultWord), [onChoose]);
-  const seconds = useCountdown(chooseWordSeconds, chooseFallback);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submitting = useRef(false);
+  const offset = useGameStore((state) => state.clockOffsetMs);
+  const seconds = useCountdown(deadline, offset);
+
+  async function choose(word: string) {
+    if (submitting.current || seconds === 0) return;
+    submitting.current = true;
+    setPending(true);
+    setError(null);
+    const result = await requestGame(
+      getActiveRoomSocket(choices.roomCode),
+      choices.roomCode,
+      'choose',
+      { revision: choices.revision, word },
+    );
+    if (!result.ok) setError(result.error.message);
+    submitting.current = false;
+    setPending(false);
+  }
 
   return (
     <Dialog open>
@@ -45,19 +64,25 @@ export function ChooseWordDialog({
         <div className="justify-self-center">
           <ClockBadge seconds={seconds} />
         </div>
-        <div className="grid gap-2">
-          {wordChoices.map((word) => (
+        <div className="grid gap-2" aria-busy={pending}>
+          {choices.options.map((word, index) => (
             <Button
               key={word}
               type="button"
-              variant={word === defaultWord ? 'default' : 'outline'}
-              onClick={() => onChoose(word)}
+              variant={index === 1 ? 'default' : 'outline'}
+              disabled={pending || seconds === 0}
+              onClick={() => void choose(word)}
               className="h-auto min-h-11 w-full text-base font-semibold transition-none"
             >
               {word}
             </Button>
           ))}
         </div>
+        {error && (
+          <p role="alert" className="text-sm">
+            {error}
+          </p>
+        )}
       </DialogContent>
     </Dialog>
   );

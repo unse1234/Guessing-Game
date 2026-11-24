@@ -26,3 +26,9 @@ export const roomRejoinSchema = z.strictObject({
   code: roomCodeSchema,
   reconnectToken: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
 });
+
+export const gameRoomSchema = z.strictObject({ code: roomCodeSchema });
+export const wordChooseSchema = gameRoomSchema.extend({
+  revision: z.number().int().positive(),
+  word: z.string().min(1).max(40),
+});

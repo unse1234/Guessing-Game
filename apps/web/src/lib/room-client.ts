@@ -5,8 +5,11 @@ import {
   type RoomCredential,
   type RoomResponse,
   type RoomSession,
+  type RoomSnapshot,
 } from '@draw-and-guess/shared';
+import { bindGameEvents } from '@/lib/game-client';
 import { getGameSocket } from '@/lib/socket';
+import { resetGameSession } from '@/stores/game-store';
 import { useRoomStore } from '@/stores/room-store';
 
 type GameSocket = ReturnType<typeof getGameSocket>;
@@ -16,6 +19,7 @@ const state = useRoomStore;
 let client: GameSocket | undefined;
 let credential: RoomCredential | null = null;
 let restoring: { socketId: string; task: Promise<void> } | undefined;
+let earlyRoom: RoomSnapshot | null = null;
 
 function loadCredential() {
   try {
@@ -38,11 +42,22 @@ function saveCredential(value: RoomCredential | null) {
 }
 
 function acceptSession(session: RoomSession) {
-  const { room, playerId, reconnectToken } = session;
+  const { playerId, reconnectToken } = session;
+  let room = session.room;
+  // An update can arrive in the same packet batch as the membership ACK.
+  if (
+    earlyRoom?.code === room.code &&
+    earlyRoom.revision > room.revision &&
+    earlyRoom.players.some((player) => player.id === playerId)
+  ) {
+    room = earlyRoom;
+  }
+  earlyRoom = null;
   const sameMembership =
     credential?.code === room.code &&
     credential.reconnectToken === reconnectToken;
   if (!sameMembership) {
+    resetGameSession();
     saveCredential({ code: room.code, reconnectToken });
   }
   state.setState((current) => ({
@@ -59,6 +74,8 @@ function acceptSession(session: RoomSession) {
 }
 
 function forgetSession(notice: string | null = null) {
+  earlyRoom = null;
+  resetGameSession();
   saveCredential(null);
   state.setState({ room: null, playerId: null, sessionCode: null, notice });
 }
@@ -107,20 +124,29 @@ function getRoomClient() {
   client = socket;
   credential = loadCredential();
   state.setState({ sessionCode: credential?.code ?? null });
+  bindGameEvents(socket);
 
   socket.on('connect', () => {
     if (credential) void restoreRoom(socket, credential);
     else state.setState({ connection: 'connected' });
   });
-  socket.on('disconnect', () => state.setState({ connection: 'offline' }));
+  socket.on('disconnect', () => {
+    earlyRoom = null;
+    state.setState({ connection: 'offline' });
+    resetGameSession();
+  });
   socket.on('connect_error', () => state.setState({ connection: 'offline' }));
   socket.io.on('reconnect_attempt', () =>
     state.setState({ connection: 'connecting' }),
   );
   socket.on(SOCKET_EVENTS.roomUpdated, ({ room, sentAt }) => {
     const current = state.getState().room;
-    if (current?.code !== room.code || current.revision >= room.revision)
+    if (current?.code !== room.code) {
+      if (earlyRoom?.code !== room.code || earlyRoom.revision < room.revision)
+        earlyRoom = room;
       return;
+    }
+    if (current.revision >= room.revision) return;
 
     state.setState({ room });
     if (process.env.NODE_ENV === 'development' && sentAt !== undefined) {
@@ -160,6 +186,16 @@ export function startRoomClient() {
 export function retryRoomConnection() {
   startRoomClient();
   if (client?.connected && credential) void restoreRoom(client, credential);
+}
+
+export function getActiveRoomSocket(code: string) {
+  const room = state.getState();
+  return client?.connected &&
+    room.connection === 'connected' &&
+    room.room?.code === code &&
+    room.playerId
+    ? client
+    : undefined;
 }
 
 function awaitConnection(socket: GameSocket) {

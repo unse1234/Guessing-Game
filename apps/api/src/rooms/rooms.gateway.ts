@@ -24,10 +24,10 @@ import {
 import type { Server, Socket } from 'socket.io';
 import { RoomsService, type RoomChange } from './rooms.service';
 
-type RoomSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
-type RoomServer = Server<ClientToServerEvents, ServerToClientEvents>;
+export type RoomSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
+export type RoomServer = Server<ClientToServerEvents, ServerToClientEvents>;
 
-const channel = (code: string) => `room:${code}`;
+export const channel = (code: string) => `room:${code}`;
 const requestLimit = 16;
 const requestWindowMs = 10_000;
 
@@ -195,7 +195,7 @@ export class RoomsGateway
       socket.to(name).emit(SOCKET_EVENTS.roomUpdated, this.update(room));
   }
 
-  private broadcast(change: RoomChange) {
+  broadcast(change: RoomChange) {
     if (change.kind === 'closed') {
       this.server.to(channel(change.code)).emit(SOCKET_EVENTS.roomClosed, {
         code: change.code,
@@ -214,7 +214,7 @@ export class RoomsGateway
       : { room };
   }
 
-  private allow<T>(socket: RoomSocket, ack: RoomAck<T>) {
+  allow<T>(socket: RoomSocket, ack: RoomAck<T>) {
     if (!socket.connected || typeof ack !== 'function') return false;
     const now = performance.now();
     let budget = this.limits.get(socket);

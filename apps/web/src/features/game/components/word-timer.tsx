@@ -1,13 +1,8 @@
 'use client';
 
 import { Clock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import {
-  hiddenWordLength,
-  roundSeconds,
-  type DemoWord,
-} from '@/features/game/data/mock-game';
 import { useCountdown } from '@/features/game/hooks/use-countdown';
+import { useGameStore } from '@/stores/game-store';
 
 export function ClockBadge({ seconds }: { seconds: number }) {
   return (
@@ -22,47 +17,47 @@ export function ClockBadge({ seconds }: { seconds: number }) {
   );
 }
 
-function RoundTimer() {
-  const seconds = useCountdown(roundSeconds);
-  return <ClockBadge seconds={seconds} />;
+export function DeadlineClock({ deadline }: { deadline: number }) {
+  const offset = useGameStore((state) => state.clockOffsetMs);
+  return <ClockBadge seconds={useCountdown(deadline, offset)} />;
 }
 
-interface WordTimerProps {
-  word: DemoWord | null;
-  running: boolean;
-  onReopen?: () => void;
-}
-
-export function WordTimer({ word, running, onReopen }: WordTimerProps) {
+export function WordTimer({
+  word,
+  mask,
+  deadline,
+}: {
+  word: string | null;
+  mask: string | null;
+  deadline: number | null;
+}) {
   return (
     <section
-      aria-label="Word and local timer"
+      aria-label="Word and turn timer"
       className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5 rounded-md border bg-secondary/60 px-2.5 py-1.5 sm:px-3"
     >
       <span className="text-sm font-semibold">Word</span>
       <p className="text-center text-base font-semibold wrap-anywhere sm:text-lg">
-        {word ?? (
-          <>
-            <span className="sr-only">
-              Hidden word, {hiddenWordLength} letters
-            </span>
-            <span aria-hidden="true" className="tracking-[0.18em]">
-              {Array.from({ length: hiddenWordLength }, () => '_').join(' ')}
-            </span>
-          </>
-        )}
+        {word ??
+          (mask ? (
+            <>
+              <span className="sr-only">
+                Hidden word, {mask.length} letters
+              </span>
+              <span aria-hidden="true" className="tracking-[0.18em]">
+                {mask.split('').join(' ')}
+              </span>
+            </>
+          ) : (
+            '—'
+          ))}
       </p>
-      {running ? <RoundTimer /> : <ClockBadge seconds={roundSeconds} />}
-      {onReopen && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="col-span-3 justify-self-center transition-none"
-          onClick={onReopen}
-        >
-          Choose word
-        </Button>
+      {deadline !== null ? (
+        <DeadlineClock key={deadline} deadline={deadline} />
+      ) : (
+        <span aria-hidden="true" className="px-2.5">
+          —
+        </span>
       )}
     </section>
   );

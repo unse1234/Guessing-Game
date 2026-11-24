@@ -8,7 +8,8 @@
     "start": "next start --port 3000",
     "typecheck": "next typegen && tsc --noEmit",
     "test:connection": "node scripts/check-connection.mjs",
-    "test:rooms": "node --test scripts/check-rooms.mjs"
+    "test:rooms": "node --test scripts/check-rooms.mjs",
+    "test:game": "node --test scripts/check-game.mjs"
   },
   "dependencies": {
     "@draw-and-guess/shared": "workspace:*",
