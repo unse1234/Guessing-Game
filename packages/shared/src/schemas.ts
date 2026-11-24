@@ -70,15 +70,29 @@ export const drawClearSchema = drawSyncSchema.extend({
 const x = z.number().int().min(0).max(DRAWING_WIDTH);
 const y = z.number().int().min(0).max(DRAWING_HEIGHT);
 function pointsSchema(limit: number) {
-  return z
-    .array(z.number().int().min(0).max(DRAWING_WIDTH))
-    .min(2)
-    .max(limit * 2)
-    .refine(
-      (points) =>
-        points.length % 2 === 0 &&
-        points.every((value, i) => i % 2 === 0 || value <= DRAWING_HEIGHT),
-    );
+  return z.custom<number[]>((points) => {
+    if (
+      !Array.isArray(points) ||
+      points.length < 2 ||
+      points.length > limit * 2 ||
+      points.length % 2 !== 0
+    )
+      return false;
+    for (let i = 0; i < points.length; i += 2) {
+      const horizontal = points[i];
+      const vertical = points[i + 1];
+      if (
+        !Number.isInteger(horizontal) ||
+        horizontal < 0 ||
+        horizontal > DRAWING_WIDTH ||
+        !Number.isInteger(vertical) ||
+        vertical < 0 ||
+        vertical > DRAWING_HEIGHT
+      )
+        return false;
+    }
+    return true;
+  });
 }
 
 export const drawStartSchema = drawClearSchema.extend({

@@ -40,12 +40,7 @@ function success(result) {
 }
 
 async function snapshot(socket, turnId) {
-  const [canvas, result] = await Promise.all([
-    wait(socket, events.drawSnapshot),
-    request(socket, events.drawSync, { turnId }),
-  ]);
-  success(result);
-  return canvas;
+  return success(await request(socket, events.drawSync, { turnId }));
 }
 
 const strokeId = (number) => number.toString(16).padStart(32, '0');

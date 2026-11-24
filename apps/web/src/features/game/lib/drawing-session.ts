@@ -52,7 +52,6 @@ export class DrawingSession {
     private readonly turnId: string,
     private readonly publish: (view: DrawingView) => void,
   ) {
-    socket.on(SOCKET_EVENTS.drawSnapshot, this.onSnapshot);
     socket.on(SOCKET_EVENTS.drawStart, this.onStart);
     socket.on(SOCKET_EVENTS.drawPoints, this.onPoints);
     socket.on(SOCKET_EVENTS.drawEnd, this.onEnd);
@@ -62,7 +61,6 @@ export class DrawingSession {
   dispose() {
     this.disposed = true;
     this.stopStroke();
-    this.socket.off(SOCKET_EVENTS.drawSnapshot, this.onSnapshot);
     this.socket.off(SOCKET_EVENTS.drawStart, this.onStart);
     this.socket.off(SOCKET_EVENTS.drawPoints, this.onPoints);
     this.socket.off(SOCKET_EVENTS.drawEnd, this.onEnd);
@@ -83,17 +81,18 @@ export class DrawingSession {
     this.snapshotStarted = performance.now();
     const epoch = ++this.epoch;
     this.notify();
-    void this.socket
+    this.socket
       .timeout(ackTimeout)
-      .emitWithAck(SOCKET_EVENTS.drawSync, { turnId: this.turnId })
-      .then(
-        (result) => {
-          // The server sends the snapshot before the ACK on the ordered connection.
-          if (!result.ok) this.syncFailed(epoch, result.error.message);
-          else if (this.syncing)
-            this.syncFailed(epoch, 'The canvas snapshot was out of date.');
+      .emit(
+        SOCKET_EVENTS.drawSync,
+        { turnId: this.turnId },
+        (error, result) => {
+          if (this.disposed || this.epoch !== epoch || !this.syncing) return;
+          if (error) this.syncFailed('Canvas sync timed out.');
+          else if (!result.ok) this.syncFailed(result.error.message);
+          // Apply inside the ACK callback so the next packet can update the snapshot.
+          else this.applySnapshot(result.data);
         },
-        () => this.syncFailed(epoch, 'Canvas sync timed out.'),
       );
   }
 
@@ -218,14 +217,14 @@ export class DrawingSession {
       });
   }
 
-  private onSnapshot = (snapshot: DrawingSnapshot) => {
-    if (!this.syncing || snapshot.turnId !== this.turnId) return;
+  private applySnapshot(snapshot: DrawingSnapshot) {
     if (
-      this.scene &&
-      (snapshot.revision < this.scene.revision ||
-        snapshot.canvasVersion < this.scene.canvasVersion)
+      snapshot.turnId !== this.turnId ||
+      (this.scene &&
+        (snapshot.revision < this.scene.revision ||
+          snapshot.canvasVersion < this.scene.canvasVersion))
     )
-      return;
+      return this.syncFailed('The canvas snapshot was out of date.');
     this.scene = snapshot;
     this.ready = true;
     this.syncing = false;
@@ -236,10 +235,9 @@ export class DrawingSession {
         `[drawing] snapshot restored in ${(performance.now() - this.snapshotStarted).toFixed(1)} ms`,
       );
     }
-  };
+  }
 
-  private syncFailed(epoch: number, message: string) {
-    if (this.disposed || this.epoch !== epoch || !this.syncing) return;
+  private syncFailed(message: string) {
     this.syncing = false;
     this.error = message;
     this.notify();

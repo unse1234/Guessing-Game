@@ -244,4 +244,21 @@ test('schemas reject malformed paint metadata and coordinates or batches beyond 
     }).success,
     false,
   );
+  const withPoints = (points) =>
+    drawEndSchema.safeParse({ ...scope, id: id(1), points }).success;
+  assert.equal(withPoints([0, 600, 900, 0]), true);
+  for (const points of [
+    [901, 0],
+    [0, 601],
+    [0, 1.5],
+    [NaN, 0],
+    [0, Infinity],
+    [-1, 0],
+    ['1', 0],
+    [null, 0],
+    Array(2),
+    new Uint16Array([0, 0]),
+  ]) {
+    assert.equal(withPoints(points), false);
+  }
 });

@@ -153,6 +153,7 @@ class TestSocket extends EventEmitter {
 
   timeout() {
     return {
+      emit: (event, body, ack) => this.sent.push({ event, body, ack }),
       emitWithAck: (event, body) =>
         new Promise((ack) => this.sent.push({ event, body, ack })),
     };
@@ -196,12 +197,10 @@ test('reconciles snapshot and live events by revision, then repairs skipped prev
   try {
     session.sync();
     socket.emit(events.drawEnd, { ...receipt(3), stroke: pen });
-    socket.emit(events.drawSnapshot, {
-      ...receipt(3),
-      strokes: [pen],
-      active: null,
+    socket.sent[0].ack(null, {
+      ok: true,
+      data: { ...receipt(3), strokes: [pen], active: null },
     });
-    socket.sent[0].ack({ ok: true, data: null });
     socket.emit(events.drawEnd, { ...receipt(2), stroke: pen });
     assert.equal(view().scene.strokes.length, 1);
     socket.emit(events.drawStart, { ...receipt(4), stroke: eraser });
@@ -232,12 +231,10 @@ test('reconciles snapshot and live events by revision, then repairs skipped prev
 test('drawer publishes the completed stroke before its ACK and bounds reliable in-flight requests', (t) => {
   const { session, socket, view } = fixture(t);
   session.sync();
-  socket.emit(events.drawSnapshot, {
-    ...receipt(0),
-    strokes: [],
-    active: null,
+  socket.sent[0].ack(null, {
+    ok: true,
+    data: { ...receipt(0), strokes: [], active: null },
   });
-  socket.sent[0].ack({ ok: true, data: null });
   for (let i = 0; i < 4; i++) {
     const stroke = { ...pen, id: String(i), points: [10, 20] };
     assert.equal(session.start(stroke), true);
@@ -250,4 +247,22 @@ test('drawer publishes the completed stroke before its ACK and bounds reliable i
   const ends = socket.sent.filter(({ event }) => event === events.drawEnd);
   assert.equal(ends.length, 4);
   assert.deepEqual(ends[0].body.points, [10, 20, 15, 25]);
+});
+
+test('a retry ignores stale snapshot acknowledgements and preserves the next live packet', (t) => {
+  const { session, socket, view } = fixture(t);
+  session.sync();
+  socket.sent[0].ack(new Error('timeout'));
+  session.sync();
+  socket.sent[0].ack(null, {
+    ok: true,
+    data: { ...receipt(5), strokes: [pen], active: null },
+  });
+  assert.equal(view().ready, false);
+  socket.sent[1].ack(null, {
+    ok: true,
+    data: { ...receipt(1, 1), strokes: [], active: null },
+  });
+  socket.emit(events.drawEnd, { ...receipt(2, 1), stroke: eraser });
+  assert.deepEqual(view().scene.strokes, [eraser]);
 });

@@ -7,6 +7,7 @@ import {
   roomError,
   SOCKET_EVENTS,
   type DrawingReceipt,
+  type DrawingSnapshot,
   type RoomAck,
 } from '@draw-and-guess/shared';
 import {
@@ -132,7 +133,7 @@ export class DrawingGateway
   sync(
     @ConnectedSocket() socket: RoomSocket,
     @MessageBody() raw: unknown,
-    @Ack() ack: RoomAck<null>,
+    @Ack() ack: RoomAck<DrawingSnapshot>,
   ) {
     if (!this.rooms.allow(socket, ack)) return;
     const parsed = drawSyncSchema.safeParse(raw);
@@ -143,10 +144,7 @@ export class DrawingGateway
     if (last !== undefined && now - last < 250)
       return ack(roomError('RATE_LIMITED'));
     this.snapshotAt.set(socket, now);
-    const result = this.drawings.snapshot(socket.id, parsed.data);
-    if (!result.ok) return ack(result);
-    socket.emit(SOCKET_EVENTS.drawSnapshot, result.data);
-    ack({ ok: true, data: null });
+    ack(this.drawings.snapshot(socket.id, parsed.data));
   }
 
   private allowMutation(socket: RoomSocket, ack: RoomAck<DrawingReceipt>) {

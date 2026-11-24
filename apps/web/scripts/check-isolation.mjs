@@ -61,22 +61,32 @@ async function startRoom(t, nickname) {
     socket.on(events.wordOptions, (payload) => off.push(payload));
     socket.on(events.wordConfirmed, (payload) => off.push(payload));
   }
-  const [options, started] = await Promise.all([
-    wait(host, events.wordOptions),
-    request(host, events.gameStart, {
-      code,
-      generation: room.gameGeneration,
-    }).then(success),
-  ]);
+  const [options, firstSelection, secondSelection, started] = await Promise.all(
+    [
+      wait(host, events.wordOptions),
+      wait(first, events.gameState),
+      wait(second, events.gameState),
+      request(host, events.gameStart, {
+        code,
+        generation: room.gameGeneration,
+      }).then(success),
+    ],
+  );
+  assert.deepEqual(firstSelection, started);
+  assert.deepEqual(secondSelection, started);
   const word = options.options[0];
-  const drawing = success(
-    await request(host, events.wordChoose, {
+  const [firstDrawing, secondDrawing, drawing] = await Promise.all([
+    wait(first, events.gameState),
+    wait(second, events.gameState),
+    request(host, events.wordChoose, {
       code,
       turnId: started.turnId,
       revision: started.revision,
       word,
-    }),
-  );
+    }).then(success),
+  ]);
+  assert.deepEqual(firstDrawing, drawing);
+  assert.deepEqual(secondDrawing, drawing);
   return {
     host,
     first,

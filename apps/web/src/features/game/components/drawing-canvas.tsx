@@ -1,7 +1,15 @@
 'use client';
 
-import { memo, useEffect, useRef, useState, type PointerEvent } from 'react';
-import { Circle, Layer, Line, Stage } from 'react-konva';
+import type Konva from 'konva';
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent,
+} from 'react';
+import { Circle, Group, Layer, Line, Stage } from 'react-konva';
 import { useDrawing } from '@/features/game/hooks/use-drawing';
 import {
   DRAWING_HEIGHT,
@@ -19,6 +27,8 @@ interface DrawingCanvasProps {
   onPoint: () => void;
   onFinish: (stroke: DrawingStroke) => void;
 }
+
+const minCachedStrokes = 16;
 
 const StrokeShape = memo(function StrokeShape({
   stroke,
@@ -49,6 +59,43 @@ const StrokeShape = memo(function StrokeShape({
       lineJoin="round"
       globalCompositeOperation={composite}
     />
+  );
+});
+
+const CompletedStrokes = memo(function CompletedStrokes({
+  strokes,
+  scale,
+}: {
+  strokes: readonly DrawingStroke[];
+  scale: number;
+}) {
+  const group = useRef<Konva.Group>(null);
+
+  useLayoutEffect(() => {
+    const ink = group.current;
+    const layer = ink?.getLayer();
+    if (!ink || !layer) return;
+    if (strokes.length < minCachedStrokes) {
+      if (ink.isCached()) ink.clearCache();
+      return;
+    }
+
+    // Rasterize at the display resolution. The live eraser stays on the same layer.
+    ink.cache({
+      x: 0,
+      y: 0,
+      width: DRAWING_WIDTH,
+      height: DRAWING_HEIGHT,
+      pixelRatio: scale * layer.getCanvas().getPixelRatio(),
+    });
+  }, [strokes, scale]);
+
+  return (
+    <Group ref={group} listening={false}>
+      {strokes.map((stroke) => (
+        <StrokeShape key={stroke.id} stroke={stroke} />
+      ))}
+    </Group>
   );
 });
 
@@ -140,9 +187,7 @@ export function DrawingCanvas({
           scaleY={scale}
         >
           <Layer listening={false}>
-            {strokes.map((stroke) => (
-              <StrokeShape key={stroke.id} stroke={stroke} />
-            ))}
+            <CompletedStrokes strokes={strokes} scale={scale} />
             {preview && <StrokeShape key={preview.id} stroke={preview} />}
           </Layer>
         </Stage>

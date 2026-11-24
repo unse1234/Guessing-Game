@@ -60,7 +60,6 @@ export const SOCKET_EVENTS = {
   drawEnd: 'draw:end',
   drawClear: 'draw:clear',
   drawSync: 'draw:sync',
-  drawSnapshot: 'draw:snapshot',
 } as const;
 
 export type Ping = z.infer<typeof pingSchema>;
@@ -94,7 +93,10 @@ export interface ClientToServerEvents {
     payload: DrawClear,
     ack: RoomAck<DrawingReceipt>,
   ) => void;
-  [SOCKET_EVENTS.drawSync]: (payload: DrawSync, ack: RoomAck<null>) => void;
+  [SOCKET_EVENTS.drawSync]: (
+    payload: DrawSync,
+    ack: RoomAck<DrawingSnapshot>,
+  ) => void;
   [SOCKET_EVENTS.ping]: (payload: Ping) => void;
   [SOCKET_EVENTS.roomCreate]: (
     payload: RoomCreate,
@@ -136,7 +138,6 @@ export interface ServerToClientEvents {
   [SOCKET_EVENTS.drawPoints]: (batch: DrawingBatch) => void;
   [SOCKET_EVENTS.drawEnd]: (stroke: DrawingEnded) => void;
   [SOCKET_EVENTS.drawClear]: (receipt: DrawingReceipt) => void;
-  [SOCKET_EVENTS.drawSnapshot]: (snapshot: DrawingSnapshot) => void;
   [SOCKET_EVENTS.pong]: (payload: Pong) => void;
   [SOCKET_EVENTS.roomUpdated]: (payload: RoomUpdated) => void;
   [SOCKET_EVENTS.roomClosed]: (payload: RoomClosed) => void;
