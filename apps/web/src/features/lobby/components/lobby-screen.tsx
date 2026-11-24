@@ -1,4 +1,4 @@
-import { Toaster } from 'sonner';
+import { FeedbackToaster } from '@/components/layout/feedback-toaster';
 import { SiteBrand } from '@/components/layout/site-brand';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -50,16 +50,7 @@ export function LobbyScreen({ code }: { code: string }) {
           <LobbyActions />
         </div>
       </Card>
-      <Toaster
-        position="bottom-center"
-        toastOptions={{
-          style: {
-            background: 'var(--surface)',
-            color: 'var(--foreground)',
-            borderColor: 'var(--surface-highlight)',
-          },
-        }}
-      />
+      <FeedbackToaster />
     </main>
   );
 }
