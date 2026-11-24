@@ -4,10 +4,12 @@ const winnerList = new Intl.ListFormat('en', { type: 'conjunction' });
 
 export function WinnerAnnouncement({
   winners,
+  status,
 }: {
   winners: readonly string[];
+  status?: string;
 }) {
-  let announcement = 'No final scores yet.';
+  let announcement = status ?? 'No final scores yet.';
   if (winners.length === 1) {
     announcement = `${winners[0]} is the winner!`;
   } else if (winners.length > 1) {
@@ -28,7 +30,9 @@ export function WinnerAnnouncement({
       >
         Game Over!
       </h1>
-      <p className="mt-1 text-lg wrap-anywhere md:text-xl">{announcement}</p>
+      <p role="status" className="mt-1 text-lg wrap-anywhere md:text-xl">
+        {announcement}
+      </p>
     </section>
   );
 }

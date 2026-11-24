@@ -7,6 +7,8 @@ import type {
   roomLeaveSchema,
   roomRejoinSchema,
   gameRoomSchema,
+  gameStartSchema,
+  gameRestartSchema,
   wordChooseSchema,
   guessSubmitSchema,
   drawStartSchema,
@@ -46,6 +48,7 @@ export const SOCKET_EVENTS = {
   gameStart: 'game:start',
   gameState: 'game:state',
   gameGetState: 'game:get-state',
+  gameRestart: 'game:restart',
   wordOptions: 'word:options',
   wordChoose: 'word:choose',
   wordConfirmed: 'word:confirmed',
@@ -67,6 +70,8 @@ export type RoomJoin = z.infer<typeof roomJoinSchema>;
 export type RoomLeave = z.infer<typeof roomLeaveSchema>;
 export type RoomRejoin = z.infer<typeof roomRejoinSchema>;
 export type GameRoomRequest = z.infer<typeof gameRoomSchema>;
+export type GameStart = z.infer<typeof gameStartSchema>;
+export type GameRestart = z.infer<typeof gameRestartSchema>;
 export type WordChoose = z.infer<typeof wordChooseSchema>;
 export type GuessSubmit = z.infer<typeof guessSubmitSchema>;
 export type DrawStart = z.infer<typeof drawStartSchema>;
@@ -105,7 +110,11 @@ export interface ClientToServerEvents {
     ack: RoomAck<RoomSession>,
   ) => void;
   [SOCKET_EVENTS.gameStart]: (
-    payload: GameRoomRequest,
+    payload: GameStart,
+    ack: RoomAck<PublicGameState>,
+  ) => void;
+  [SOCKET_EVENTS.gameRestart]: (
+    payload: GameRestart,
     ack: RoomAck<PublicGameState>,
   ) => void;
   [SOCKET_EVENTS.gameGetState]: (

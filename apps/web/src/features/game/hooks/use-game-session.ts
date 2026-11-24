@@ -4,7 +4,8 @@ import { getActiveRoomSocket, startRoomClient } from '@/lib/room-client';
 import { useGameStore } from '@/stores/game-store';
 import { useRoomStore } from '@/stores/room-store';
 
-export function useGameSession(code: string) {
+export function useGameSession(code: string, route: 'game' | 'results') {
+  const router = useRouter();
   const room = useRoomStore((state) =>
     state.room?.code === code ? state.room : null,
   );
@@ -21,22 +22,36 @@ export function useGameSession(code: string) {
   const [syncError, setSyncError] = useState<string | null>(null);
 
   const load = useCallback(
-    () => requestGame(getActiveRoomSocket(code), code, 'get'),
+    () => requestGame(getActiveRoomSocket(code), code, { action: 'get' }),
     [code],
   );
 
   useEffect(() => {
-    finishGameNavigation(code);
+    if (route === 'game') finishGameNavigation(code);
     startRoomClient();
-  }, [code]);
+  }, [code, route]);
 
   const roomStatus = room?.status;
+  const destination =
+    roomStatus === 'waiting'
+      ? 'room'
+      : roomStatus === 'playing'
+        ? 'game'
+        : roomStatus === 'finished'
+          ? 'results'
+          : null;
   useEffect(() => {
-    if (!connected || !playerId || !roomStatus) return;
+    if (connected && destination && destination !== route)
+      router.replace(`/${destination}/${code}`);
+  }, [code, connected, destination, route, router]);
+
+  const turnId = game?.turnId;
+  useEffect(() => {
+    if (!connected || !playerId || destination !== route) return;
     const { game: current, guessReady } = useGameStore.getState();
     if (
       current?.roomCode === code &&
-      (guessReady || (current.phase === 'waiting' && roomStatus === 'waiting'))
+      (route === 'results' ? current.phase === 'finished' : guessReady)
     )
       return;
 
@@ -47,7 +62,7 @@ export function useGameSession(code: string) {
     return () => {
       cancelled = true;
     };
-  }, [code, connected, load, playerId, roomStatus]);
+  }, [code, connected, destination, load, playerId, route, turnId]);
 
   async function retry() {
     const result = await load();
@@ -56,3 +71,4 @@ export function useGameSession(code: string) {
 
   return { room, playerId, connected, game, guessReady, syncError, retry };
 }
+import { useRouter } from 'next/navigation';

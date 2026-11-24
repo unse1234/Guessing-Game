@@ -37,7 +37,12 @@ export const roomRejoinSchema = z.strictObject({
 });
 
 export const gameRoomSchema = z.strictObject({ code: roomCodeSchema });
+export const gameStartSchema = gameRoomSchema.extend({
+  generation: z.number().int().nonnegative(),
+});
+export const gameRestartSchema = gameRoomSchema.extend({ gameId: z.uuid() });
 export const wordChooseSchema = gameRoomSchema.extend({
+  turnId: z.uuid(),
   revision: z.number().int().positive(),
   word: z.string().min(1).max(40),
 });

@@ -1,5 +1,7 @@
 import {
   gameRoomSchema,
+  gameStartSchema,
+  gameRestartSchema,
   guessSubmitSchema,
   roomError,
   SOCKET_EVENTS,
@@ -49,10 +51,25 @@ export class GameGateway implements OnGatewayInit {
     @Ack() ack: RoomAck<PublicGameState>,
   ) {
     if (!this.roomGateway.allow(socket, ack)) return;
-    const parsed = gameRoomSchema.safeParse(raw);
+    const parsed = gameStartSchema.safeParse(raw);
     ack(
       parsed.success
-        ? this.games.start(socket.id, parsed.data.code)
+        ? this.games.start(socket.id, parsed.data)
+        : roomError('INVALID_REQUEST'),
+    );
+  }
+
+  @SubscribeMessage(SOCKET_EVENTS.gameRestart)
+  restart(
+    @ConnectedSocket() socket: RoomSocket,
+    @MessageBody() raw: unknown,
+    @Ack() ack: RoomAck<PublicGameState>,
+  ) {
+    if (!this.roomGateway.allow(socket, ack)) return;
+    const parsed = gameRestartSchema.safeParse(raw);
+    ack(
+      parsed.success
+        ? this.games.restart(socket.id, parsed.data)
         : roomError('INVALID_REQUEST'),
     );
   }
@@ -84,8 +101,7 @@ export class GameGateway implements OnGatewayInit {
       ack(roomError('INVALID_REQUEST'));
       return;
     }
-    const { code, revision, word } = parsed.data;
-    ack(this.games.choose(socket.id, code, revision, word));
+    ack(this.games.choose(socket.id, parsed.data));
   }
 
   @SubscribeMessage(SOCKET_EVENTS.guessSubmit)

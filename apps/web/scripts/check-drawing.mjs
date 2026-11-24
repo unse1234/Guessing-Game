@@ -84,7 +84,7 @@ test('live drawing across a full room, optimistic previews, clear, and reconnect
     ),
   );
   const [selection, options] = await Promise.all([
-    request(sender, events.gameStart, { code }).then(success),
+    request(sender, events.gameStart, { code, generation: 0 }).then(success),
     wait(sender, events.wordOptions),
   ]);
   const turnId = selection.turnId;
@@ -97,6 +97,7 @@ test('live drawing across a full room, optimistic previews, clear, and reconnect
   success(
     await request(sender, events.wordChoose, {
       code,
+      turnId: selection.turnId,
       revision: selection.revision,
       word: options.options[0],
     }),

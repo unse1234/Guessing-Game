@@ -36,9 +36,17 @@ function fixture(t, count = 2) {
   );
   const phases = [];
   games.onTransition(({ game }) => phases.push(game));
-  const start = success(games.start('host', code));
+  const start = success(games.start('host', { code, generation: 0 }));
   const word = success(games.getView('host', code)).privateWord.options[0];
-  const begin = () => success(games.choose('host', code, start.revision, word));
+  const begin = () =>
+    success(
+      games.choose('host', {
+        code,
+        turnId: start.turnId,
+        revision: start.revision,
+        word,
+      }),
+    );
   let id = 0;
   const payload = (guess) => ({
     code,
@@ -130,19 +138,19 @@ test('scores each player once, uses the server deadline, caps the drawer bonus, 
     assert.equal(result.activity.scores.length, i < 4 ? 2 : 1);
   }
   const ended = f.view('guest6');
-  assert.equal(ended.game.revealedWord, f.word);
-  assert.equal(ended.game.phase, 'turn_ended');
-  assert.equal(ended.game.phaseEndsAt, null);
+  assert.equal(ended.game.summary.word, f.word);
+  assert.equal(ended.game.phase, 'turn_summary');
+  assert.equal(ended.game.phaseEndsAt, Date.now() + 5_000);
   assert.equal(
     ended.guessing.scores.find((entry) => entry.playerId === f.host.playerId)
       .points,
     200,
   );
   assert.equal(f.submit('guest6', f.word).error.code, 'GUESS_CLOSED');
-  f.tick(60_000);
+  f.tick(4_999);
   assert.deepEqual(
     f.phases.map(({ phase }) => phase),
-    ['word_selection', 'drawing', 'turn_ended'],
+    ['word_selection', 'drawing', 'turn_summary'],
   );
 });
 
@@ -208,7 +216,7 @@ test('preserves eligibility during the reconnect grace period and completes afte
   f.tick(14_999);
   assert.equal(f.view('guest0').game.phase, 'drawing');
   f.tick(1);
-  assert.equal(f.view('guest0').game.phase, 'turn_ended');
+  assert.equal(f.view('guest0').game.phase, 'turn_summary');
 });
 
 test('ends on the original drawing deadline and refuses a late answer', (t) => {
@@ -219,6 +227,6 @@ test('ends on the original drawing deadline and refuses a late answer', (t) => {
   f.tick(1);
   assert.equal(f.submit('guest1', f.word).error.code, 'GUESS_CLOSED');
   const late = f.view('guest1');
-  assert.equal(late.game.phase, 'turn_ended');
+  assert.equal(late.game.phase, 'turn_summary');
   assert.equal(late.guessing.myPoints, null);
 });

@@ -2,6 +2,8 @@ import {
   GUESS_HISTORY_LIMIT,
   roomError,
   SOCKET_EVENTS,
+  type GameRestart,
+  type GameStart,
   type GuessActivity,
   type GuessReceipt,
   type GuessSnapshot,
@@ -10,12 +12,18 @@ import {
   type PublicGameState,
   type RoomResponse,
   type ScoreEntry,
+  type WordChoose,
 } from '@draw-and-guess/shared';
 import type { getGameSocket } from '@/lib/socket';
 import { emptyGuessing, useGameStore } from '@/stores/game-store';
 import { useRoomStore } from '@/stores/room-store';
 
 type GameSocket = ReturnType<typeof getGameSocket>;
+type GameRequest =
+  | ({ action: 'start' } & Omit<GameStart, 'code'>)
+  | { action: 'get' }
+  | ({ action: 'choose' } & Omit<WordChoose, 'code'>)
+  | ({ action: 'restart' } & Omit<GameRestart, 'code'>);
 const ackTimeout = 5_000;
 let navigation: { code: string; started: number } | undefined;
 
@@ -26,18 +34,25 @@ function ingestGame(game: PublicGameState, roundTripMs?: number) {
     session.room?.code !== game.roomCode
   )
     return;
-  const current = useGameStore.getState().game;
+  const state = useGameStore.getState();
+  const current = state.game;
   const sameRoom = current?.roomCode === game.roomCode;
-  if (sameRoom && current.revision > game.revision) return;
+  if (sameRoom && current.generation > game.generation) return;
+  const sameGeneration = sameRoom && current.generation === game.generation;
+  if (sameGeneration && current.revision > game.revision) return;
 
   const clockOffsetMs = game.serverTime - Date.now() + (roundTripMs ?? 0) / 2;
-  if (sameRoom && current.revision === game.revision) {
+  if (sameGeneration && current.revision === game.revision) {
     if (roundTripMs !== undefined) useGameStore.setState({ clockOffsetMs });
     return;
   }
 
   useGameStore.setState({
-    ...(!sameRoom || current.turnId !== game.turnId ? emptyGuessing : {}),
+    ...(!sameGeneration || current.turnId !== game.turnId ? emptyGuessing : {}),
+    // A new turn starts with empty chat and unchanged cumulative scores.
+    ...(sameGeneration
+      ? { scores: state.scores, guessReady: state.guessReady }
+      : {}),
     game,
     privateWord: null,
     clockOffsetMs,
@@ -134,6 +149,7 @@ function ingestPrivate(word: PrivateGameWord) {
     session.room?.code !== word.roomCode ||
     session.playerId !== word.drawerId ||
     game?.roomCode !== word.roomCode ||
+    game.turnId !== word.turnId ||
     game.revision !== word.revision ||
     game.currentDrawerId !== word.drawerId ||
     privateWord?.revision === word.revision
@@ -177,7 +193,8 @@ export async function requestGuess(
       useGameStore.setState({ myPoints: result.data.pointsAwarded });
     return result;
   } catch {
-    if (stillInTurn()) void requestGame(socket, payload.code, 'get');
+    if (stillInTurn())
+      void requestGame(socket, payload.code, { action: 'get' });
     return roomError('SERVER_UNAVAILABLE');
   } finally {
     if (process.env.NODE_ENV === 'development')
@@ -190,13 +207,13 @@ export async function requestGuess(
 export async function requestGame(
   socket: GameSocket | undefined,
   code: string,
-  action: 'start' | 'get' | 'choose',
-  selection?: { revision: number; word: string },
+  request: GameRequest,
 ): Promise<RoomResponse<PublicGameState>> {
   if (!socket?.connected) return roomError('SERVER_UNAVAILABLE');
   const socketId = socket.id;
   const playerId = useRoomStore.getState().playerId;
   const started = performance.now();
+  const { action } = request;
   try {
     if (action === 'get') {
       const result = await socket
@@ -215,16 +232,30 @@ export async function requestGame(
       return { ok: true, data: result.data.game };
     }
 
-    const result =
-      action === 'start'
-        ? await socket
-            .timeout(ackTimeout)
-            .emitWithAck(SOCKET_EVENTS.gameStart, { code })
-        : selection
-          ? await socket
-              .timeout(ackTimeout)
-              .emitWithAck(SOCKET_EVENTS.wordChoose, { code, ...selection })
-          : roomError('INVALID_REQUEST');
+    const connection = socket.timeout(ackTimeout);
+    let result: RoomResponse<PublicGameState>;
+    switch (request.action) {
+      case 'start':
+        result = await connection.emitWithAck(SOCKET_EVENTS.gameStart, {
+          code,
+          generation: request.generation,
+        });
+        break;
+      case 'choose':
+        result = await connection.emitWithAck(SOCKET_EVENTS.wordChoose, {
+          code,
+          turnId: request.turnId,
+          revision: request.revision,
+          word: request.word,
+        });
+        break;
+      case 'restart':
+        result = await connection.emitWithAck(SOCKET_EVENTS.gameRestart, {
+          code,
+          gameId: request.gameId,
+        });
+        break;
+    }
     if (result.ok && socket.id === socketId)
       ingestGame(result.data, performance.now() - started);
     return result;

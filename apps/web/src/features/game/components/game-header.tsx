@@ -5,11 +5,15 @@ import { Badge } from '@/components/ui/badge';
 export function GameHeader({
   code,
   playerCount,
+  round,
+  totalRounds,
   turn,
   totalTurns,
 }: {
   code: string;
   playerCount: number;
+  round: number;
+  totalRounds: number;
   turn: number;
   totalTurns: number;
 }) {
@@ -20,9 +24,11 @@ export function GameHeader({
       </div>
       <Badge
         variant="secondary"
-        className="w-fit rounded-md px-2.5 text-sm sm:px-3"
+        className="h-auto w-fit rounded-md px-2.5 text-sm whitespace-normal sm:px-3"
       >
-        {turn ? `Round ${turn} / ${totalTurns}` : 'Waiting'}
+        {round
+          ? `Round ${round}/${totalRounds} · Turn ${turn}/${totalTurns}`
+          : 'Waiting'}
       </Badge>
       <div className="col-span-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm min-[38rem]:col-span-1 min-[38rem]:justify-end">
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap">

@@ -77,7 +77,10 @@ test('live guesses, private scoring receipts, ordered recovery, and automatic ea
 
   const [options, started] = await Promise.all([
     wait(host, events.wordOptions),
-    request(host, events.gameStart, { code }),
+    request(host, events.gameStart, {
+      code,
+      generation: hostSession.room.gameGeneration,
+    }),
   ]);
   const { turnId } = success(started);
   const payload = (guess) => ({
@@ -95,6 +98,7 @@ test('live guesses, private scoring receipts, ordered recovery, and automatic ea
     wait(last, events.gameState),
     request(host, events.wordChoose, {
       code,
+      turnId,
       revision: options.revision,
       word,
     }).then(success),
@@ -203,8 +207,8 @@ test('live guesses, private scoring receipts, ordered recovery, and automatic ea
     wait(host, events.guessPlayerCorrect),
     request(last, events.guessSubmit, payload(word)).then(success),
   ]);
-  assert.equal(ended.phase, 'turn_ended');
-  assert.equal(ended.revealedWord, word);
+  assert.equal(ended.phase, 'turn_summary');
+  assert.equal(ended.summary.word, word);
   assert.equal(finalScore.playerId, lastSession.playerId);
   assert.equal(finalScore.scores[1].points, 100);
   assert.equal(

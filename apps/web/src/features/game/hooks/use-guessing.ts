@@ -79,7 +79,7 @@ export function useGuessing(code: string, isDrawer: boolean) {
   }
 
   const emptyHint =
-    game?.phase === 'turn_ended'
+    game?.phase === 'turn_summary' || game?.phase === 'finished'
       ? 'This turn has ended.'
       : game?.phase === 'drawing'
         ? isDrawer

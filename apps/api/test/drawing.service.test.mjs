@@ -27,16 +27,16 @@ function fixture(t) {
   const host = success(rooms.create('host', 'Hammad'));
   const code = host.room.code;
   success(rooms.join('guest', code, 'Ali'));
-  const game = success(games.start('host', code));
+  const game = success(games.start('host', { code, generation: 0 }));
   const scope = { turnId: game.turnId, canvasVersion: 0 };
   const draw = () =>
     success(
-      games.choose(
-        'host',
+      games.choose('host', {
         code,
-        game.revision,
-        success(games.getView('host', code)).privateWord.options[0],
-      ),
+        turnId: game.turnId,
+        revision: game.revision,
+        word: success(games.getView('host', code)).privateWord.options[0],
+      }),
     );
   t.after(() => {
     drawings.onModuleDestroy();

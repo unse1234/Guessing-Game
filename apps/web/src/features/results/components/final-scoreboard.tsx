@@ -1,5 +1,5 @@
+import type { FinalPlayerResult } from '@draw-and-guess/shared';
 import { cn } from 'cn';
-import type { RankedResult } from '@/features/results/types/results';
 
 const cellSpacing = 'px-3 py-[clamp(0.25rem,1.1svh,0.75rem)] sm:px-5';
 
@@ -8,7 +8,7 @@ export function FinalScoreboard({
   results,
 }: {
   code: string;
-  results: readonly RankedResult[];
+  results: readonly FinalPlayerResult[];
 }) {
   return (
     <div className="overflow-hidden rounded-xl border bg-background/30">
@@ -41,9 +41,9 @@ export function FinalScoreboard({
           </tr>
         </thead>
         <tbody className="divide-y">
-          {results.map(({ id, name, rank, score }) => (
+          {results.map(({ playerId, nickname, rank, score }) => (
             <tr
-              key={id}
+              key={playerId}
               className={rank === 1 ? 'bg-secondary font-semibold' : undefined}
             >
               <td className={cn('text-center tabular-nums', cellSpacing)}>
@@ -57,7 +57,7 @@ export function FinalScoreboard({
                   cellSpacing,
                 )}
               >
-                {name}
+                {nickname}
               </th>
               <td
                 className={cn(

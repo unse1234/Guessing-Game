@@ -13,6 +13,7 @@ export interface Room {
 }
 
 export const ROOM_CAPACITY = 8;
+export const GAME_MIN_PLAYERS = 2;
 export const ROOM_RECONNECT_GRACE_MS = 15_000;
 
 export interface RoomPlayer {
@@ -28,6 +29,7 @@ export interface RoomSnapshot {
   players: RoomPlayer[];
   status: GameStatus;
   revision: number;
+  gameGeneration: number;
 }
 
 export interface RoomCredential {
@@ -50,7 +52,10 @@ export const ROOM_ERROR_MESSAGES = {
   ROOM_FULL: 'This room already has eight players.',
   GAME_STARTED: 'The game in this room has already started.',
   NOT_HOST: 'Only the host can start the game.',
-  NOT_ENOUGH_PLAYERS: 'At least two connected players are needed.',
+  RESTART_HOST_ONLY: 'Only the current host can play again.',
+  GAME_NOT_FINISHED: 'This finished game is no longer available to restart.',
+  STALE_GAME: 'The room has moved to a different game.',
+  NOT_ENOUGH_PLAYERS: `At least ${GAME_MIN_PLAYERS} connected players are needed.`,
   NOT_DRAWER: 'Only the current drawer can choose a word.',
   INVALID_WORD: 'Choose one of the words offered to you.',
   WRONG_PHASE: 'The game is no longer accepting word choices for this turn.',
@@ -94,24 +99,61 @@ export interface RoomClosed {
   reason: 'room_closed' | 'session_replaced';
 }
 
-export type GamePhase = 'waiting' | 'word_selection' | 'drawing' | 'turn_ended';
+export type GamePhase =
+  'waiting' | 'word_selection' | 'drawing' | 'turn_summary' | 'finished';
+
+export type TurnEndReason =
+  'time_expired' | 'all_correct' | 'drawer_left' | 'insufficient_players';
+
+export interface TurnSummary {
+  reason: TurnEndReason;
+  word: string | null;
+  awards: {
+    playerId: string;
+    nickname: string;
+    points: number;
+    score: number;
+  }[];
+}
+
+export interface FinalPlayerResult {
+  playerId: string;
+  nickname: string;
+  score: number;
+  rank: number;
+}
+
+export interface FinalGameResults {
+  roomCode: string;
+  gameId: string;
+  players: FinalPlayerResult[];
+  winnerIds: string[];
+  reason: 'completed' | 'insufficient_players';
+  finishedAt: number;
+}
 
 export interface PublicGameState {
   roomCode: string;
+  gameId: string | null;
+  generation: number;
   turnId: string | null;
   revision: number;
   phase: GamePhase;
   currentDrawerId: string | null;
   currentTurn: number;
   totalTurns: number;
+  currentRound: number;
+  totalRounds: number;
   phaseEndsAt: number | null;
   maskedWord: string | null;
-  revealedWord?: string;
+  summary?: TurnSummary;
+  results?: FinalGameResults;
   serverTime: number;
 }
 
 interface PrivateWordScope {
   roomCode: string;
+  turnId: string;
   revision: number;
   drawerId: string;
 }

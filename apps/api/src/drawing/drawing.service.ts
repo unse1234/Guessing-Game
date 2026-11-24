@@ -61,9 +61,11 @@ export class DrawingService implements OnModuleDestroy {
       rooms.onRoomClosed((code) => this.remove(code)),
       games.onTransition(({ game }) => {
         const canvas = this.canvases.get(game.roomCode);
-        if (!canvas) return;
-        if (game.turnId !== canvas.turnId) this.remove(canvas.code);
-        else if (game.phase === 'turn_ended') this.finalizeInterrupted(canvas);
+        if (!game.turnId) this.remove(game.roomCode);
+        else if (game.turnId !== canvas?.turnId)
+          this.canvasFor(game.roomCode, game.turnId);
+        else if (game.phase === 'turn_summary')
+          this.finalizeInterrupted(canvas);
       }),
     ];
   }
@@ -264,7 +266,7 @@ export class DrawingService implements OnModuleDestroy {
     const canvas: Canvas = {
       code,
       turnId,
-      canvasVersion: 0,
+      canvasVersion: (existing?.canvasVersion ?? -1) + 1,
       revision: 0,
       strokes: new Map(),
       active: null,

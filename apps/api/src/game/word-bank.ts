@@ -63,13 +63,12 @@ const words = [
   'Submarine',
 ] as const;
 
-export function pickWordOptions(): readonly [string, string, string] {
-  const first = randomInt(words.length);
-  const second = (first + randomInt(1, words.length)) % words.length;
-  let third: number;
-  do {
-    third = randomInt(words.length);
-  } while (third === first || third === second);
-
-  return [words[first], words[second], words[third]];
+export function pickWordOptions(
+  used: ReadonlySet<string>,
+): readonly [string, string, string] {
+  const available = words.filter((word) => !used.has(word));
+  const pool = available.length >= 3 ? available : [...words];
+  const [first] = pool.splice(randomInt(pool.length), 1);
+  const [second] = pool.splice(randomInt(pool.length), 1);
+  return [first, second, pool[randomInt(pool.length)]];
 }

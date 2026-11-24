@@ -37,8 +37,12 @@ export function ChooseWordDialog({
     const result = await requestGame(
       getActiveRoomSocket(choices.roomCode),
       choices.roomCode,
-      'choose',
-      { revision: choices.revision, word },
+      {
+        action: 'choose',
+        turnId: choices.turnId,
+        revision: choices.revision,
+        word,
+      },
     );
     if (!result.ok) setError(result.error.message);
     submitting.current = false;

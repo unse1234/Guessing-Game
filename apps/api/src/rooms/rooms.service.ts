@@ -16,6 +16,7 @@ interface Room {
   hostId: string | null;
   players: Map<string, Membership>;
   status: GameStatus;
+  gameGeneration: number;
   revision: number;
 }
 
@@ -86,10 +87,11 @@ export class RoomsService implements OnModuleDestroy {
     return room ? this.snapshot(room) : undefined;
   }
 
-  markPlaying(code: string) {
+  transitionGameStatus(code: string, from: GameStatus, to: GameStatus) {
     const room = this.rooms.get(code);
-    if (room?.status !== 'waiting') return;
-    room.status = 'playing';
+    if (room?.status !== from) return;
+    room.status = to;
+    if (to !== 'finished') room.gameGeneration++;
     room.revision++;
     return this.snapshot(room);
   }
@@ -123,6 +125,7 @@ export class RoomsService implements OnModuleDestroy {
       hostId: null,
       players: new Map(),
       status: 'waiting',
+      gameGeneration: 0,
       revision: 0,
     };
     this.rooms.set(code, room);
@@ -244,6 +247,7 @@ export class RoomsService implements OnModuleDestroy {
       code: room.code,
       hostId: room.hostId,
       status: room.status,
+      gameGeneration: room.gameGeneration,
       revision: room.revision,
       players: [...room.players.values()].map(({ id, nickname, socketId }) => ({
         id,

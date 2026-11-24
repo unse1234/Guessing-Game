@@ -8,6 +8,7 @@ import { DrawingBoard } from '@/features/game/components/drawing-board';
 import { GameHeader } from '@/features/game/components/game-header';
 import { GuessPanel } from '@/features/game/components/guess-panel';
 import { PlayersPanel } from '@/features/game/components/players-panel';
+import { TurnSummaryDialog } from '@/features/game/components/turn-summary-dialog';
 import {
   DeadlineClock,
   WordTimer,
@@ -23,12 +24,13 @@ const phaseLabels = {
   waiting: 'Waiting for the host',
   word_selection: 'Word selection',
   drawing: 'Drawing',
-  turn_ended: 'Turn ended',
+  turn_summary: 'Turn complete',
+  finished: 'Game complete',
 };
 
 export function GameScreen({ code }: { code: string }) {
   const { room, playerId, connected, game, guessReady, syncError, retry } =
-    useGameSession(code);
+    useGameSession(code, 'game');
   const connection = useRoomStore((state) => state.connection);
   const notice = useRoomStore((state) => state.notice);
   const privateWord = useGameStore((state) =>
@@ -40,6 +42,7 @@ export function GameScreen({ code }: { code: string }) {
   const drawer = players.find((player) => player.id === drawerId);
   const selecting = game?.phase === 'word_selection';
   const drawing = game?.phase === 'drawing';
+  const summary = game?.summary;
   const deadline = game?.phaseEndsAt ?? null;
   const choices =
     isDrawer && privateWord?.kind === 'options' ? privateWord : null;
@@ -69,6 +72,8 @@ export function GameScreen({ code }: { code: string }) {
         <GameHeader
           code={code}
           playerCount={players.length}
+          round={game?.currentRound ?? 0}
+          totalRounds={game?.totalRounds ?? 0}
           turn={game?.currentTurn ?? 0}
           totalTurns={game?.totalTurns ?? 0}
         />
@@ -103,15 +108,15 @@ export function GameScreen({ code }: { code: string }) {
               )}
             </div>
             <WordTimer
-              word={word ?? game?.revealedWord ?? null}
+              word={word ?? summary?.word ?? null}
               mask={game?.maskedWord ?? null}
-              deadline={selecting ? null : deadline}
+              deadline={drawing ? deadline : null}
             />
             <div className="relative min-w-0">
               <DrawingBoard
                 code={code}
                 turnId={
-                  drawing || game?.phase === 'turn_ended'
+                  drawing || game?.phase === 'turn_summary'
                     ? (game?.turnId ?? null)
                     : null
                 }
@@ -134,7 +139,7 @@ export function GameScreen({ code }: { code: string }) {
             </div>
           </section>
           <GuessPanel
-            key={`${code}:${playerId}`}
+            key={`${code}:${playerId}:${game?.turnId}`}
             code={code}
             isDrawer={isDrawer}
           />
@@ -144,6 +149,13 @@ export function GameScreen({ code }: { code: string }) {
         <ChooseWordDialog
           key={choices.revision}
           choices={choices}
+          deadline={deadline}
+        />
+      )}
+      {connected && summary && deadline !== null && (
+        <TurnSummaryDialog
+          key={game?.turnId}
+          summary={summary}
           deadline={deadline}
         />
       )}

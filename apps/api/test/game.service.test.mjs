@@ -26,21 +26,39 @@ function fixture(t) {
 
 test('authenticates start, requires connected players, and picks the first eligible drawer once', (t) => {
   const { rooms, games, host, code, updates } = fixture(t);
-  assert.equal(games.start('stranger', code).error.code, 'NOT_IN_ROOM');
-  assert.equal(games.start('host', 'MISSING').error.code, 'ROOM_NOT_FOUND');
-  assert.equal(games.start('host', code).error.code, 'NOT_ENOUGH_PLAYERS');
+  assert.equal(
+    games.start('stranger', { code, generation: 0 }).error.code,
+    'NOT_IN_ROOM',
+  );
+  assert.equal(
+    games.start('host', { code: 'MISSING', generation: 0 }).error.code,
+    'ROOM_NOT_FOUND',
+  );
+  assert.equal(
+    games.start('host', { code, generation: 0 }).error.code,
+    'NOT_ENOUGH_PLAYERS',
+  );
   const guest = success(rooms.join('guest', code, 'Ali'));
-  assert.equal(games.start('guest', code).error.code, 'NOT_HOST');
+  assert.equal(
+    games.start('guest', { code, generation: 0 }).error.code,
+    'NOT_HOST',
+  );
   rooms.disconnect('guest');
-  assert.equal(games.start('host', code).error.code, 'NOT_ENOUGH_PLAYERS');
+  assert.equal(
+    games.start('host', { code, generation: 0 }).error.code,
+    'NOT_ENOUGH_PLAYERS',
+  );
   success(rooms.rejoin('guest-new', code, guest.reconnectToken));
 
-  const start = success(games.start('host', code));
+  const start = success(games.start('host', { code, generation: 0 }));
   assert.equal(start.phase, 'word_selection');
   assert.equal(start.currentDrawerId, host.playerId);
   assert.equal(start.currentTurn, 1);
-  assert.equal(start.totalTurns, 2);
-  assert.equal(games.start('host', code).error.code, 'GAME_STARTED');
+  assert.equal(start.totalTurns, 4);
+  assert.equal(
+    games.start('host', { code, generation: 0 }).error.code,
+    'GAME_STARTED',
+  );
   assert.equal(rooms.join('extra', code, 'Zain').error.code, 'GAME_STARTED');
   assert.equal(updates.length, 1);
 });
@@ -48,16 +66,26 @@ test('authenticates start, requires connected players, and picks the first eligi
 test('validates choices, keeps words private, and restores original deadlines after reconnect', (t) => {
   const { rooms, games, host, code, updates } = fixture(t);
   success(rooms.join('guest', code, 'Ali'));
-  const initial = success(games.start('host', code));
+  const initial = success(games.start('host', { code, generation: 0 }));
   const options = success(games.getView('host', code)).privateWord.options;
   assert.equal(new Set(options).size, 3);
   assert.ok(!('privateWord' in success(games.getView('guest', code))));
   assert.equal(
-    games.choose('guest', code, initial.revision, options[0]).error.code,
+    games.choose('guest', {
+      code,
+      turnId: initial.turnId,
+      revision: initial.revision,
+      word: options[0],
+    }).error.code,
     'NOT_DRAWER',
   );
   assert.equal(
-    games.choose('host', code, initial.revision, 'Unlisted word').error.code,
+    games.choose('host', {
+      code,
+      turnId: initial.turnId,
+      revision: initial.revision,
+      word: 'Unlisted word',
+    }).error.code,
     'INVALID_WORD',
   );
   rooms.disconnect('host');
@@ -67,13 +95,23 @@ test('validates choices, keeps words private, and restores original deadlines af
   assert.equal(restored.game.phaseEndsAt, initial.phaseEndsAt);
 
   const drawing = success(
-    games.choose('host-new', code, initial.revision, options[1]),
+    games.choose('host-new', {
+      code,
+      turnId: initial.turnId,
+      revision: initial.revision,
+      word: options[1],
+    }),
   );
   assert.equal(drawing.phase, 'drawing');
   assert.equal(drawing.maskedWord, '_'.repeat(options[1].length));
   assert.ok(!('selectedWord' in drawing) && !('options' in drawing));
   assert.equal(
-    games.choose('host-new', code, initial.revision, options[0]).error.code,
+    games.choose('host-new', {
+      code,
+      turnId: initial.turnId,
+      revision: initial.revision,
+      word: options[0],
+    }).error.code,
     'WRONG_PHASE',
   );
   rooms.disconnect('host-new');
@@ -100,14 +138,19 @@ test('fake timers auto-select, end drawing, reject late selections, and cancel o
   });
   const { rooms, games, code, updates } = fixture(t);
   success(rooms.join('guest', code, 'Ali'));
-  const selecting = success(games.start('host', code));
+  const selecting = success(games.start('host', { code, generation: 0 }));
   const options = success(games.getView('host', code)).privateWord.options;
   const [selectionTimer] = timers;
   assert.equal(selecting.phaseEndsAt, 115_000);
   assert.equal(selectionTimer.due, selecting.phaseEndsAt);
   now = 115_000;
   assert.equal(
-    games.choose('host', code, selecting.revision, options[1]).error.code,
+    games.choose('host', {
+      code,
+      turnId: selecting.turnId,
+      revision: selecting.revision,
+      word: options[1],
+    }).error.code,
     'DEADLINE_PASSED',
   );
   const [, drawingTimer] = timers;
@@ -120,36 +163,38 @@ test('fake timers auto-select, end drawing, reject late selections, and cancel o
   drawingTimer.fn();
   drawingTimer.fn();
   assert.equal(updates.length, 3);
-  assert.equal(updates[2].game.phase, 'turn_ended');
-  assert.equal(updates[2].game.phaseEndsAt, null);
+  assert.equal(updates[2].game.phase, 'turn_summary');
+  assert.equal(updates[2].game.phaseEndsAt, 180_000);
   assert.ok(!('privateWord' in success(games.getView('host', code))));
   rooms.leave('host');
   rooms.leave('guest');
   assert.equal(games.getView('host', code).error.code, 'ROOM_NOT_FOUND');
 });
 
-test('selection and drawing timer callbacks still progress with an absent drawer', (t) => {
+test('a drawer who leaves during selection forfeits and reaches results when alone', (t) => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 50_000 });
   const { rooms, games, code, updates } = fixture(t);
   success(rooms.join('guest', code, 'Ali'));
-  success(games.start('host', code));
+  success(games.start('host', { code, generation: 0 }));
   rooms.leave('host');
-  t.mock.timers.tick(15_000);
   assert.equal(updates.length, 2);
-  assert.equal(updates[1].game.phase, 'drawing');
-  t.mock.timers.tick(60_000);
+  assert.equal(updates[1].game.phase, 'turn_summary');
+  assert.equal(updates[1].game.summary.word, null);
+  assert.equal(updates[1].game.summary.reason, 'drawer_left');
+  t.mock.timers.tick(5_000);
   assert.equal(updates.length, 3);
-  assert.equal(updates[2].game.phase, 'turn_ended');
+  assert.equal(updates[2].game.phase, 'finished');
+  assert.equal(updates[2].game.results.reason, 'insufficient_players');
 });
 
 test('closing the last membership cancels the phase timeout', (t) => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 50_000 });
   const { rooms, games, code, updates } = fixture(t);
   success(rooms.join('guest', code, 'Ali'));
-  success(games.start('host', code));
+  success(games.start('host', { code, generation: 0 }));
   rooms.leave('host');
   rooms.leave('guest');
   t.mock.timers.tick(75_000);
-  assert.equal(updates.length, 1);
+  assert.equal(updates.length, 2);
   assert.equal(games.getView('host', code).error.code, 'ROOM_NOT_FOUND');
 });

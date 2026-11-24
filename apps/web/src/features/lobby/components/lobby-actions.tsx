@@ -1,5 +1,6 @@
 'use client';
 
+import { GAME_MIN_PLAYERS } from '@draw-and-guess/shared';
 import { LogOut, Play } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -21,23 +22,37 @@ export function LobbyActions({ code }: { code: string }) {
   const [starting, setStarting] = useState(false);
   const pending = useRef(false);
   const playing = room?.status === 'playing';
+  const finished = room?.status === 'finished';
   const host = playerId !== null && room?.hostId === playerId;
   const enoughPlayers = room
-    ? room.players.filter((player) => player.isOnline).length >= 2
+    ? room.players.filter((player) => player.isOnline).length >=
+      GAME_MIN_PLAYERS
     : false;
 
   useEffect(() => {
-    if (online && playing) {
+    if (!online) return;
+    if (finished) router.replace(`/results/${code}`);
+    else if (playing) {
       markGameNavigation(code);
       router.replace(`/game/${code}`);
     }
-  }, [code, online, playing, router]);
+  }, [code, finished, online, playing, router]);
 
   async function start() {
-    if (pending.current || !host || !enoughPlayers) return;
+    if (
+      pending.current ||
+      !host ||
+      !room ||
+      !enoughPlayers ||
+      room.status !== 'waiting'
+    )
+      return;
     pending.current = true;
     setStarting(true);
-    const result = await requestGame(getActiveRoomSocket(code), code, 'start');
+    const result = await requestGame(getActiveRoomSocket(code), code, {
+      action: 'start',
+      generation: room.gameGeneration,
+    });
     if (!result.ok) toast.error(result.error.message);
     setStarting(false);
     pending.current = false;
@@ -63,13 +78,19 @@ export function LobbyActions({ code }: { code: string }) {
         type="button"
         className="h-auto min-h-12 w-full text-base font-semibold whitespace-normal transition-none sm:text-lg"
         disabled={
-          !online || !host || !enoughPlayers || playing || starting || leaving
+          !online ||
+          !host ||
+          !enoughPlayers ||
+          playing ||
+          finished ||
+          starting ||
+          leaving
         }
         title={
           !host
             ? 'Only the host can start the game'
             : !enoughPlayers
-              ? 'Wait for two connected players'
+              ? `Wait for ${GAME_MIN_PLAYERS} connected players`
               : undefined
         }
         onClick={() => void start()}

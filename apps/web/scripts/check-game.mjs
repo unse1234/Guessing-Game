@@ -53,7 +53,12 @@ test('authenticated start, private words, refresh, explicit choice and duplicate
     await request(outsider, events.roomCreate, { nickname: 'Unrelated' }),
   );
   assert.equal(
-    (await request(outsider, events.gameStart, { code })).error.code,
+    (
+      await request(outsider, events.gameStart, {
+        code,
+        generation: hostSession.room.gameGeneration,
+      })
+    ).error.code,
     'NOT_IN_ROOM',
   );
   assert.equal(
@@ -61,14 +66,24 @@ test('authenticated start, private words, refresh, explicit choice and duplicate
     'NOT_IN_ROOM',
   );
   assert.equal(
-    (await request(host, events.gameStart, { code })).error.code,
+    (
+      await request(host, events.gameStart, {
+        code,
+        generation: hostSession.room.gameGeneration,
+      })
+    ).error.code,
     'NOT_ENOUGH_PLAYERS',
   );
   const guestSession = success(
     await request(guest, events.roomJoin, { code, nickname: 'Ali' }),
   );
   assert.equal(
-    (await request(guest, events.gameStart, { code })).error.code,
+    (
+      await request(guest, events.gameStart, {
+        code,
+        generation: hostSession.room.gameGeneration,
+      })
+    ).error.code,
     'NOT_HOST',
   );
   assert.equal(
@@ -99,7 +114,10 @@ test('authenticated start, private words, refresh, explicit choice and duplicate
       ms: performance.now() - begin,
     })),
     wait(host, events.wordOptions),
-    request(host, events.gameStart, { code }).then((response) => ({
+    request(host, events.gameStart, {
+      code,
+      generation: hostSession.room.gameGeneration,
+    }).then((response) => ({
       response,
       ms: performance.now() - begin,
     })),
@@ -112,7 +130,12 @@ test('authenticated start, private words, refresh, explicit choice and duplicate
   assert.ok(hostPublic.phaseEndsAt - hostPublic.serverTime >= 14_990);
   assert.ok(hostPublic.phaseEndsAt - hostPublic.serverTime <= 15_000);
   assert.equal(
-    (await request(host, events.gameStart, { code })).error.code,
+    (
+      await request(host, events.gameStart, {
+        code,
+        generation: hostSession.room.gameGeneration,
+      })
+    ).error.code,
     'GAME_STARTED',
   );
   assert.equal(secrets.length, 0);
@@ -151,6 +174,7 @@ test('authenticated start, private words, refresh, explicit choice and duplicate
 
   const selected = {
     code,
+    turnId: options.turnId,
     revision: options.revision,
     word: options.options[1],
   };
