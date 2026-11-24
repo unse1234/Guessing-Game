@@ -187,6 +187,25 @@ test('keeps the answer private, deduplicates public messages, and restores a sta
   assert.equal(f.submit('refreshed', f.word).error.code, 'ALREADY_GUESSED');
 });
 
+test('chat handles compound text consistently for candidate words regardless of the answer', (t) => {
+  const { begin, word, submit, view } = fixture(t);
+  const alternative = word === 'Bicycle' ? 'Elephant' : 'Bicycle';
+  begin();
+  for (const candidate of [word, alternative]) {
+    const result = success(submit('guest0', `${candidate}?`));
+    assert.equal(result.receipt.correct, false);
+    assert.equal(result.activity.message, '…');
+  }
+  assert.deepEqual(
+    view('guest1').guessing.history.map(({ message }) => message),
+    ['…', '…'],
+  );
+  assert.equal(
+    success(submit('guest0', alternative)).activity.message,
+    alternative,
+  );
+});
+
 test('limits guesses across reconnects and keeps only the last 100 incorrect guesses', (t) => {
   const f = fixture(t);
   f.begin();

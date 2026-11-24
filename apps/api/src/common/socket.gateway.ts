@@ -22,6 +22,7 @@ export class SocketGateway
   implements OnGatewayConnection<GameSocket>, OnGatewayDisconnect<GameSocket>
 {
   private readonly logger = new Logger(SocketGateway.name);
+  private readonly nextPing = new WeakMap<GameSocket, number>();
 
   handleConnection(socket: GameSocket) {
     this.logger.log(`Connected ${socket.id}`);
@@ -36,8 +37,11 @@ export class SocketGateway
     @ConnectedSocket() socket: GameSocket,
     @MessageBody() payload: unknown,
   ) {
+    const now = performance.now();
+    if (now < (this.nextPing.get(socket) ?? 0)) return;
     const ping = pingSchema.safeParse(payload);
     if (ping.success) {
+      this.nextPing.set(socket, now + 1_000);
       socket.emit(SOCKET_EVENTS.pong, {
         sentAt: ping.data.sentAt,
         serverTime: Date.now(),

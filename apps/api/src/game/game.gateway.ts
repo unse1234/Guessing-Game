@@ -110,7 +110,7 @@ export class GameGateway implements OnGatewayInit {
     @MessageBody() raw: unknown,
     @Ack() ack: RoomAck<GuessReceipt>,
   ) {
-    if (!socket.connected || typeof ack !== 'function') return;
+    if (!this.roomGateway.allow(socket, ack, 'guess')) return;
     const parsed = guessSubmitSchema.safeParse(raw);
     if (!parsed.success) {
       ack(roomError('INVALID_GUESS'));

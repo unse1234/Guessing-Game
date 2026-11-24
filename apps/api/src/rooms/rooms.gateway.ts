@@ -22,6 +22,7 @@ import {
   type OnGatewayInit,
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
+import { PeerRateLimit, socketLimits } from '../common/socket-limits';
 import { RoomsService, type RoomChange } from './rooms.service';
 
 export type RoomSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -30,6 +31,7 @@ export type RoomServer = Server<ClientToServerEvents, ServerToClientEvents>;
 export const channel = (code: string) => `room:${code}`;
 const requestLimit = 16;
 const requestWindowMs = 10_000;
+const guessRequestLimit = 32;
 
 @WebSocketGateway()
 export class RoomsGateway
@@ -38,10 +40,17 @@ export class RoomsGateway
   @WebSocketServer()
   private server!: RoomServer;
 
-  private readonly limits = new WeakMap<
+  private readonly controlLimits = new WeakMap<
     RoomSocket,
     { count: number; until: number }
   >();
+  private readonly guessLimits = new WeakMap<
+    RoomSocket,
+    { count: number; until: number }
+  >();
+  private readonly creates = new PeerRateLimit(socketLimits.roomCreates);
+  private readonly joins = new PeerRateLimit(socketLimits.roomJoins);
+  private readonly reconnects = new PeerRateLimit(socketLimits.reconnects);
 
   constructor(private readonly rooms: RoomsService) {}
 
@@ -50,7 +59,8 @@ export class RoomsGateway
   }
 
   handleDisconnect(socket: RoomSocket) {
-    this.limits.delete(socket);
+    this.controlLimits.delete(socket);
+    this.guessLimits.delete(socket);
     const change = this.rooms.disconnect(socket.id);
     if (change) this.broadcast(change);
   }
@@ -61,7 +71,7 @@ export class RoomsGateway
     @MessageBody() payload: unknown,
     @Ack() ack: RoomAck<RoomSession>,
   ) {
-    if (!this.allow(socket, ack)) return;
+    if (!this.allowRoomRequest(socket, ack, this.creates)) return;
     const request = roomCreateSchema.safeParse(payload);
     if (!request.success) {
       ack(
@@ -86,7 +96,7 @@ export class RoomsGateway
     @MessageBody() payload: unknown,
     @Ack() ack: RoomAck<RoomSession>,
   ) {
-    if (!this.allow(socket, ack)) return;
+    if (!this.allowRoomRequest(socket, ack, this.joins)) return;
     const request = roomJoinSchema.safeParse(payload);
     if (!request.success) {
       const field = request.error.issues[0]?.path[0];
@@ -114,7 +124,7 @@ export class RoomsGateway
     @MessageBody() payload: unknown,
     @Ack() ack: RoomAck<RoomSession>,
   ) {
-    if (!this.allow(socket, ack)) return;
+    if (!this.allowRoomRequest(socket, ack, this.reconnects)) return;
     const request = roomRejoinSchema.safeParse(payload);
     if (!request.success) {
       ack(
@@ -218,15 +228,32 @@ export class RoomsGateway
       : { room };
   }
 
-  allow<T>(socket: RoomSocket, ack: RoomAck<T>) {
+  private allowRoomRequest(
+    socket: RoomSocket,
+    ack: RoomAck<RoomSession>,
+    peerBudget: PeerRateLimit,
+  ) {
+    if (!this.allow(socket, ack)) return false;
+    if (peerBudget.take(socket.handshake.address)) return true;
+    ack(roomError('RATE_LIMITED'));
+    return false;
+  }
+
+  allow<T>(
+    socket: RoomSocket,
+    ack: RoomAck<T>,
+    category: 'control' | 'guess' = 'control',
+  ) {
     if (!socket.connected || typeof ack !== 'function') return false;
+    const limits = category === 'guess' ? this.guessLimits : this.controlLimits;
+    const limit = category === 'guess' ? guessRequestLimit : requestLimit;
     const now = performance.now();
-    let budget = this.limits.get(socket);
+    let budget = limits.get(socket);
     if (!budget || now >= budget.until) {
       budget = { count: 0, until: now + requestWindowMs };
-      this.limits.set(socket, budget);
+      limits.set(socket, budget);
     }
-    if (budget.count >= requestLimit) {
+    if (budget.count >= limit) {
       ack(roomError('RATE_LIMITED'));
       return false;
     }

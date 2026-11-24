@@ -9,7 +9,9 @@ import {
   MIN_BRUSH_SIZE,
 } from './types';
 
-export const pingSchema = z.object({ sentAt: z.number().int().nonnegative() });
+export const pingSchema = z.strictObject({
+  sentAt: z.number().int().nonnegative(),
+});
 export const pongSchema = pingSchema.extend({
   serverTime: z.number().int().nonnegative(),
 });
@@ -22,7 +24,7 @@ export const roomCodeSchema = z
 
 export const roomNicknameSchema = z
   .string()
-  .refine((value) => !/\p{Cc}/u.test(value))
+  .refine((value) => !/[\p{Cc}\p{Cs}\p{Bidi_Control}]/u.test(value))
   .transform((value) => value.trim())
   .pipe(z.string().min(2).max(20));
 

@@ -63,6 +63,17 @@ const words = [
   'Submarine',
 ] as const;
 
+const candidateWords = words.map((word) => word.toLowerCase());
+
+export function publicGuessText(original: string, normalized: string) {
+  // Apply the same rule to every candidate. Only an exact correct guess scores.
+  return candidateWords.some(
+    (word) => word !== normalized && normalized.includes(word),
+  )
+    ? '…'
+    : original;
+}
+
 export function pickWordOptions(
   used: ReadonlySet<string>,
 ): readonly [string, string, string] {

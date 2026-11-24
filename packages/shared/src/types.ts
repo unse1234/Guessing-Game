@@ -50,6 +50,7 @@ export const ROOM_ERROR_MESSAGES = {
   INVALID_CODE: 'Enter a six-character room code.',
   ROOM_NOT_FOUND: 'Room not found. Check the code and try again.',
   ROOM_FULL: 'This room already has eight players.',
+  SERVER_CAPACITY: 'All room slots are in use right now. Try again shortly.',
   GAME_STARTED: 'The game in this room has already started.',
   NOT_HOST: 'Only the host can start the game.',
   RESTART_HOST_ONLY: 'Only the current host can play again.',

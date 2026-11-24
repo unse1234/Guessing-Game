@@ -15,7 +15,8 @@
     "test:guessing": "node --test scripts/check-guessing.mjs",
     "test:lifecycle": "node --test scripts/check-lifecycle.mjs",
     "test:isolation": "node --test scripts/check-isolation.mjs",
-    "test:e2e": "node --test scripts/check-browser.mjs"
+    "test:e2e": "node --test scripts/check-browser.mjs",
+    "test:security": "node --test scripts/check-security.mjs"
   },
   "dependencies": {
     "@draw-and-guess/shared": "workspace:*",

@@ -12,7 +12,8 @@
     "test:game": "node --test test/game.service.test.mjs",
     "test:drawing": "node --test test/drawing.service.test.mjs",
     "test:guessing": "node --test test/guessing.test.mjs",
-    "test:lifecycle": "node --test test/game-lifecycle.test.mjs"
+    "test:lifecycle": "node --test test/game-lifecycle.test.mjs",
+    "test:security": "node --test test/security.test.mjs"
   },
   "dependencies": {
     "@draw-and-guess/shared": "workspace:*",

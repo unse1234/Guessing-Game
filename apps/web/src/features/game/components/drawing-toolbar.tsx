@@ -51,7 +51,7 @@ export const DrawingTools = memo(function DrawingTools({
           title={label}
           disabled={disabled}
           onClick={() => onToolChange(value)}
-          className="size-10 shrink-0 transition-none focus-visible:ring-ring sm:size-11"
+          className="size-10 shrink-0 transition-none focus-visible:ring-ring sm:size-11 [@media(pointer:coarse)]:size-11"
         >
           <Icon aria-hidden="true" className="size-5" />
         </Button>
@@ -64,7 +64,7 @@ export const DrawingTools = memo(function DrawingTools({
         title="Clear canvas"
         disabled={disabled}
         onClick={onClear}
-        className="size-10 shrink-0 transition-none focus-visible:ring-ring sm:size-11"
+        className="size-10 shrink-0 transition-none focus-visible:ring-ring sm:size-11 [@media(pointer:coarse)]:size-11"
       >
         <Trash2 aria-hidden="true" className="size-5" />
       </Button>
@@ -83,7 +83,7 @@ export const DrawingTools = memo(function DrawingTools({
             aria-pressed={size === preset}
             disabled={disabled}
             onClick={() => onSizeChange(preset)}
-            className="size-9 transition-none focus-visible:ring-ring"
+            className="size-9 transition-none focus-visible:ring-ring [@media(pointer:coarse)]:size-11"
           >
             <span
               className="rounded-full bg-foreground"
@@ -132,7 +132,7 @@ export const DrawingToolbar = memo(function DrawingToolbar({
             aria-pressed={color === value}
             disabled={disabled}
             onClick={() => onSelectColor(value)}
-            className="size-9 rounded-md border border-transparent p-1 transition-none aria-pressed:border-ring focus-visible:ring-ring"
+            className="size-9 rounded-md border border-transparent p-1 transition-none aria-pressed:border-ring focus-visible:ring-ring [@media(pointer:coarse)]:size-11"
           >
             <span
               className="size-5 rounded-full border border-foreground/50 bg-(--swatch)"
@@ -151,7 +151,7 @@ export const DrawingToolbar = memo(function DrawingToolbar({
           value={[size]}
           onValueChange={([value]) => onSizeChange(value)}
           disabled={disabled}
-          className="min-h-9 min-w-0 flex-1"
+          className="min-h-9 min-w-0 flex-1 [@media(pointer:coarse)]:min-h-11"
         />
         <span className="w-10 shrink-0 text-right text-xs tabular-nums">
           {size} px

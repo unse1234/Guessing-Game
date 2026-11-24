@@ -3,6 +3,7 @@ import { once } from 'node:events';
 import { createRequire } from 'node:module';
 import process from 'node:process';
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { URL } from 'node:url';
 import { io } from 'socket.io-client';
 
@@ -19,6 +20,13 @@ const viewports = [
   { width: 1280, height: 680 },
   { width: 844, height: 390 },
   { width: 390, height: 844 },
+];
+const deviceViewports = [
+  { width: 375, height: 667 },
+  { width: 390, height: 844 },
+  { width: 768, height: 1024 },
+  { width: 1024, height: 768 },
+  { width: 1440, height: 900 },
 ];
 const wait = { timeout: 12_000 };
 
@@ -45,7 +53,7 @@ async function ready(locator) {
   }
 }
 
-async function fixture(t, count = 3) {
+async function fixture(t, count = 3, mobile = false) {
   const browser = await chromium.launch(
     chrome ? { executablePath: chrome } : { channel: 'chrome' },
   );
@@ -54,7 +62,16 @@ async function fixture(t, count = 3) {
   const connections = Array(count).fill(0);
   const pages = [];
   for (const [i, viewport] of viewports.slice(0, count).entries()) {
-    const context = await browser.newContext({ viewport });
+    const context = await browser.newContext(
+      mobile
+        ? {
+            viewport: deviceViewports[0],
+            isMobile: true,
+            hasTouch: true,
+            deviceScaleFactor: 2,
+          }
+        : { viewport },
+    );
     const page = await context.newPage();
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('websocket', (socket) => {
@@ -63,7 +80,15 @@ async function fixture(t, count = 3) {
     pages.push(page);
   }
   const [host, ...guests] = pages;
-  await host.goto(origin);
+  const nicknames = mobile ? [names[0], '<b>Ali</b>'] : names;
+  const response = await host.goto(origin);
+  if (mobile) {
+    const headers = response.headers();
+    assert.equal(headers['x-content-type-options'], 'nosniff');
+    assert.equal(headers['x-frame-options'], 'DENY');
+    assert.match(headers['content-security-policy'], /frame-ancestors 'none'/);
+    await checkViewports(host, button(host, 'Create Room'));
+  }
   await host.getByLabel('Nickname').fill(names[0]);
   await button(host, 'Create Room').click();
   await host.waitForURL('**/room/*', wait);
@@ -72,7 +97,7 @@ async function fixture(t, count = 3) {
     await guest.goto(origin);
     await button(guest, 'Join Room').click();
     const join = dialog(guest, 'Join Room');
-    await join.getByLabel('Nickname').fill(names[i + 1]);
+    await join.getByLabel('Nickname').fill(nicknames[i + 1]);
     const codeField = join.getByLabel('Room code');
     if (i === 0) {
       await codeField.fill('123');
@@ -89,12 +114,13 @@ async function fixture(t, count = 3) {
     await page
       .getByRole('heading', { name: `Players (${count}/8)` })
       .waitFor(wait);
-    for (const nickname of names.slice(0, count)) {
+    for (const nickname of nicknames.slice(0, count)) {
       await page
         .getByRole('listitem')
         .filter({ hasText: nickname })
         .waitFor(wait);
     }
+    if (mobile) assert.equal(await page.locator('li b').count(), 0);
   }
   assert.equal(await button(guests[0], 'Start Game').isDisabled(), true);
   const start = async () => {
@@ -177,6 +203,161 @@ async function submit(page, value, mouse = false) {
     await input(page).press('Enter');
   }
 }
+
+async function checkViewports(page, control) {
+  for (const viewport of deviceViewports) {
+    await page.setViewportSize(viewport);
+    await control.waitFor(wait);
+    const { width, content } = await page.evaluate(() => ({
+      width: globalThis.innerWidth,
+      content: globalThis.document.documentElement.scrollWidth,
+    }));
+    assert.equal(width, viewport.width);
+    assert.ok(
+      content <= width,
+      `Horizontal overflow at ${viewport.width}px: ${content}px`,
+    );
+  }
+  await page.setViewportSize(deviceViewports[0]);
+}
+
+async function touchLine(page, session, yFraction, finish = 'touchEnd') {
+  const surface = page.getByRole('img', {
+    name: 'Drawing canvas',
+    exact: true,
+  });
+  await surface.scrollIntoViewIfNeeded();
+  const box = await surface.boundingBox();
+  const scroll = await page.evaluate(() => globalThis.scrollY);
+  const send = (type, touchPoints) =>
+    session.send('Input.dispatchTouchEvent', { type, touchPoints });
+  const y = box.y + box.height * yFraction;
+  await send('touchStart', [{ x: box.x + box.width * 0.2, y }]);
+  for (const fraction of [0.35, 0.5, 0.65, 0.8]) {
+    await delay(25);
+    await send('touchMove', [{ x: box.x + box.width * fraction, y }]);
+  }
+  // Let the finger come to rest before lifting so Chromium does not infer a fling.
+  if (finish === 'touchEnd') await delay(120);
+  await send(finish, []);
+  assert.equal(await page.evaluate(() => globalThis.scrollY), scroll);
+}
+
+test(
+  'mobile sessions cover every screen, touch cancellation, and a shortened keyboard viewport',
+  { timeout: 95_000 },
+  async (t) => {
+    const { host, guests, code, start, errors } = await fixture(t, 2, true);
+    const [guest] = guests;
+    await checkViewports(host, button(host, 'Start Game'));
+    await start();
+    const word = await chooseWord(host, guests);
+    await checkViewports(
+      host,
+      host.getByRole('img', { name: 'Drawing canvas', exact: true }),
+    );
+    await checkViewports(guest, guest.getByRole('timer'));
+
+    const teal = button(host, 'Teal');
+    const size = await teal.boundingBox();
+    assert.ok(
+      size && size.width >= 44 && size.height >= 44,
+      'Touch color swatches need a 44px target',
+    );
+    const hostCDP = await host.context().newCDPSession(host);
+    await teal.tap();
+    await host
+      .getByRole('button', { name: 'Teal', pressed: true })
+      .waitFor(wait);
+    await touchLine(host, hostCDP, 0.42, 'touchCancel');
+    await expectPixel(guest, 0.5, [113, 201, 206, 255]);
+    await button(host, 'Eraser').tap();
+    await host
+      .getByRole('button', { name: 'Eraser', pressed: true })
+      .waitFor(wait);
+    const slider = host.getByRole('slider', { name: 'Brush size' });
+    const brushTrack = host.locator('[data-slot="slider"]');
+    await brushTrack.scrollIntoViewIfNeeded();
+    const track = await brushTrack.boundingBox();
+    const previousSize = await slider.getAttribute('aria-valuenow');
+    await host.touchscreen.tap(
+      track.x + track.width * 0.85,
+      track.y + track.height / 2,
+    );
+    assert.notEqual(await slider.getAttribute('aria-valuenow'), previousSize);
+    await touchLine(host, hostCDP, 0.42);
+    await expectPixel(guest, 0.5, null);
+    await button(host, 'Pencil').tap();
+    await host
+      .getByRole('button', { name: 'Pencil', pressed: true })
+      .waitFor(wait);
+    await touchLine(host, hostCDP, 0.62);
+    await expectPixel(guest, 0.5, [113, 201, 206, 255], 0.62);
+    await host.setViewportSize(deviceViewports[1]);
+    await expectPixel(host, 0.5, [113, 201, 206, 255], 0.62);
+    await button(host, 'Clear canvas').tap();
+    await expectPixel(guest, 0.5, null, 0.62);
+
+    await input(guest).tap();
+    await guest.setViewportSize({ width: 375, height: 340 });
+    await guest.waitForFunction(
+      () => {
+        const field = globalThis.document.getElementById('game-guess');
+        const form = field?.form?.getBoundingClientRect();
+        const viewport = globalThis.visualViewport;
+        return (
+          field === globalThis.document.activeElement &&
+          form &&
+          viewport &&
+          form.top >= viewport.offsetTop - 1 &&
+          form.bottom <= viewport.offsetTop + viewport.height + 1
+        );
+      },
+      undefined,
+      wait,
+    );
+    const literalGuess = '<b>Some text</b>';
+    await submit(guest, literalGuess, true);
+    const chat = guest.getByRole('log');
+    await chat.getByText(literalGuess, { exact: true }).waitFor(wait);
+    assert.equal(await chat.locator('b').count(), 0);
+    for (const prefix of ['One', 'Two']) {
+      const message = `${prefix} lengthy guess to verify the mobile chat can scroll through more text.`;
+      await submit(guest, message, true);
+      await chat.getByText(message, { exact: true }).waitFor(wait);
+    }
+    assert.ok(
+      await chat.evaluate(
+        (log) => log.scrollHeight > log.clientHeight && log.scrollTop > 0,
+      ),
+      'Chat should scroll and follow recent messages',
+    );
+    await chat.evaluate((log) => {
+      log.scrollTop = 0;
+    });
+    assert.equal(await chat.evaluate((log) => log.scrollTop), 0);
+    await guest.setViewportSize(deviceViewports[0]);
+    await guest
+      .getByRole('region', { name: 'Players' })
+      .scrollIntoViewIfNeeded();
+    await submit(guest, word, true);
+    await dialog(host, 'Round Complete').waitFor(wait);
+    for (let turn = 1; turn < 4; turn++) {
+      const [drawer, guesser] = turn % 2 ? [guest, host] : [host, guest];
+      const choices = dialog(drawer, 'Choose a Word');
+      await choices.waitFor(wait);
+      const box = await choices.boundingBox();
+      assert.ok(box && box.y >= 0 && box.y + box.height <= 667);
+      await choices.getByRole('timer').waitFor(wait);
+      await submit(guesser, await chooseWord(drawer, [guesser]), true);
+      await dialog(drawer, 'Round Complete').waitFor(wait);
+    }
+    await host.waitForURL('**/results/' + code, wait);
+    await guest.waitForURL('**/results/' + code, wait);
+    await checkViewports(host, button(host, 'Play Again'));
+    assert.deepEqual(errors, []);
+  },
+);
 
 test(
   'a full short-landscape lobby keeps primary actions visible',

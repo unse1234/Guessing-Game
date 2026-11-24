@@ -11,7 +11,13 @@ async function bootstrap() {
   const origin = config.get('FRONTEND_URL', { infer: true });
 
   app.enableCors({ origin });
-  app.useWebSocketAdapter(new SocketIoAdapter(app, origin));
+  app.useWebSocketAdapter(
+    new SocketIoAdapter(
+      app,
+      origin,
+      config.get('MAX_SOCKET_CONNECTIONS', { infer: true }),
+    ),
+  );
   app.enableShutdownHooks();
   await app.listen(config.get('PORT', { infer: true }));
 }

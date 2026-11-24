@@ -1,5 +1,6 @@
 import { randomBytes, randomInt, randomUUID } from 'node:crypto';
-import { Injectable, type OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Optional, type OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ROOM_CAPACITY,
   ROOM_RECONNECT_GRACE_MS,
@@ -10,6 +11,8 @@ import {
   type RoomSession,
   type RoomSnapshot,
 } from '@draw-and-guess/shared';
+import type { Environment } from '../common/environment';
+import { socketLimits } from '../common/socket-limits';
 
 interface Room {
   code: string;
@@ -52,6 +55,13 @@ export class RoomsService implements OnModuleDestroy {
   private readonly removalListeners = new Set<
     (code: string, playerId: string) => void
   >();
+  private readonly maxRooms: number;
+
+  constructor(@Optional() config?: ConfigService<Environment, true>) {
+    this.maxRooms =
+      config?.get('MAX_ACTIVE_ROOMS', { infer: true }) ??
+      socketLimits.activeRooms;
+  }
 
   onExpiry(listener: (change: RoomChange) => void) {
     this.expiryListener = listener;
@@ -111,6 +121,8 @@ export class RoomsService implements OnModuleDestroy {
         ? this.result(current, false)
         : roomError('ALREADY_IN_ROOM');
     }
+
+    if (this.rooms.size >= this.maxRooms) return roomError('SERVER_CAPACITY');
 
     let code: string;
     do {

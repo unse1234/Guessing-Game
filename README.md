@@ -58,6 +58,8 @@ After `pnpm build`, replace `dev` with `start` to run the production builds loca
 | Web     | `NEXT_PUBLIC_SOCKET_URL` | `http://localhost:3001` | Socket.IO server origin embedded in the browser bundle. Restart development or rebuild production after changing it. |
 | API     | `PORT`                   | `3001`                  | HTTP and Socket.IO port.                                                                                             |
 | API     | `FRONTEND_URL`           | `http://localhost:3000` | Allowed web origin, including scheme and port. Use the same hostname when opening the web app.                       |
+| API     | `MAX_ACTIVE_ROOMS`       | `128`                   | Room slots per process, including rooms within their reconnect grace period.                                         |
+| API     | `MAX_SOCKET_CONNECTIONS` | `1536`                  | Engine.IO connections admitted per process.                                                                          |
 
 Real environment files are ignored by Git.
 
@@ -270,3 +272,23 @@ pnpm --filter @draw-and-guess/web exec node scripts/benchmark-canvas.mjs
 ```
 
 `BENCH_REPEATS` changes the sample count. The browser script also accepts `BENCH_DPR` and `BENCH_HISTORY_SIZE` to vary display scale and the number of preloaded strokes. Set `BENCH_TOUCH=1` to check the eraser with emulated touch after the timed mouse drag.
+
+## Phase 6.3 security and mobile checks
+
+Room membership remains server-owned. A room code lets a guest join an open lobby. A reconnect credential identifies an existing player within the room, including during the 15-second disconnect grace period. The credential lives in the tab's `sessionStorage`. API restarts clear rooms, scores, and reconnect credentials, so returning players must create or join a fresh room.
+
+The API bounds live rooms and connections. Ten-second limits of 256 handshakes, 32 room creation requests, 128 joins, and 64 reconnect requests apply per direct peer address. The peer tables retain up to 4,096 entries per category and reclaim expired entries on new requests. A separate pre-validation budget of 32 guess events per socket protects parsing while preserving the per-player guessing limit. The diagnostic ping sends at most one response per socket per second. Drawing continues to enforce packet, stroke, point, and per-turn limits.
+
+The address limits use the actual connection peer. Clients behind a proxy share that proxy's budget. Forwarded IP headers do not affect these limits. A public deployment needs HTTPS and WSS, along with admission controls at the edge for traffic from multiple peers. Reconnect credentials are bearer credentials, so access to a tab's storage grants access to that membership. Keep packet-level debug logging off production connections.
+
+Only the drawer receives word choices and the active answer. Compound guess text containing a word-bank candidate is masked under the same rule for every candidate. Exact correct guesses award points and emit the generic success notice. Nicknames and chat render as text. The web response blocks framing and object embeds and sets `nosniff` and a cross-origin referrer policy.
+
+The mobile browser check exercises Home, Lobby, Game, and Results at widths of 375, 390, 768, 1024, and 1440 px. It uses Chromium touch emulation for drawing, erasing, cancellation, brush sizing, color selection, clear, and resize. The shortened viewport check approximates a software keyboard by reducing the visible height while the chat field has focus. Physical phones and Safari's keyboard behavior require separate testing.
+
+Run these checks after building. The web security check owns a short-lived API on port 3103 and confirms the previous room and credentials are gone after a process restart.
+
+```powershell
+pnpm --filter @draw-and-guess/api test:security
+pnpm --filter @draw-and-guess/web test:security
+pnpm --filter @draw-and-guess/web test:e2e
+```

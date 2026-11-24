@@ -1,6 +1,6 @@
 import { MAX_GUESS_LENGTH } from '@draw-and-guess/shared';
 import { MessageCircle, Send } from 'lucide-react';
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useGuessing } from '@/features/game/hooks/use-guessing';
@@ -25,6 +25,7 @@ export function GuessPanel({
     submit,
   } = useGuessing(code, isDrawer);
   const log = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
   const followRecent = useRef(true);
 
   useLayoutEffect(() => {
@@ -32,6 +33,22 @@ export function GuessPanel({
     if (followRecent.current && element)
       element.scrollTop = element.scrollHeight;
   }, [activity]);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    function keepComposerVisible() {
+      const field = input.current;
+      if (!field?.form || field !== document.activeElement || !viewport) return;
+      const box = field.form.getBoundingClientRect();
+      const top = viewport.offsetTop;
+      const bottom = top + viewport.height;
+      if (box.bottom > bottom - 8) window.scrollBy(0, box.bottom - bottom + 8);
+      else if (box.top < top + 8) window.scrollBy(0, box.top - top - 8);
+    }
+    viewport.addEventListener('resize', keepComposerVisible);
+    return () => viewport.removeEventListener('resize', keepComposerVisible);
+  }, []);
 
   return (
     <section
@@ -111,6 +128,7 @@ export function GuessPanel({
             className="pointer-events-none absolute inset-y-0 left-2 my-auto size-4 text-muted-foreground"
           />
           <Input
+            ref={input}
             id="game-guess"
             type="text"
             placeholder="Type your guess…"
@@ -119,7 +137,8 @@ export function GuessPanel({
             disabled={disabled}
             maxLength={MAX_GUESS_LENGTH * 2}
             autoComplete="off"
-            className="h-10 bg-card pr-2 pl-7 shadow-none"
+            enterKeyHint="send"
+            className="h-10 bg-card pr-2 pl-7 shadow-none [@media(pointer:coarse)]:h-11"
           />
         </div>
         <Button
@@ -128,7 +147,7 @@ export function GuessPanel({
           aria-label="Send guess"
           aria-busy={pending}
           disabled={disabled || pending || !draft.trim()}
-          className="size-10 transition-none"
+          className="size-10 transition-none [@media(pointer:coarse)]:size-11"
         >
           <Send aria-hidden="true" className="size-4" />
         </Button>

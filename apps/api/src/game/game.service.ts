@@ -24,7 +24,7 @@ import {
 import { RoomsService } from '../rooms/rooms.service';
 import { rankPlayerScores, scoreCorrectGuess } from '../scoring/scoring';
 import { gameConfig } from './game-config';
-import { pickWordOptions } from './word-bank';
+import { pickWordOptions, publicGuessText } from './word-bank';
 
 const guessBurst = 4;
 const guessRefillMs = 500;
@@ -226,7 +226,7 @@ export class GameService implements OnModuleDestroy {
       const activity: GuessMessage = {
         ...scope,
         kind: 'message',
-        message: normalized.includes(turn.normalizedAnswer) ? '…' : guess,
+        message: publicGuessText(guess, normalized),
       };
       player.receipts.set(requestId, receipt);
       turn.history.push(activity);
