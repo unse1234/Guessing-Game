@@ -55,6 +55,13 @@ export function DrawingBoard({
       className={`${styles.drawingBoard} grid min-w-0 gap-2`}
       data-readonly={readOnly}
     >
+      <DrawingToolbar
+        color={color}
+        size={size}
+        disabled={!drawing.enabled}
+        onSelectColor={selectColor}
+        onSizeChange={setSize}
+      />
       <div className={styles.board}>
         <DrawingTools
           tool={tool}
@@ -77,13 +84,6 @@ export function DrawingBoard({
           />
         </div>
       </div>
-      <DrawingToolbar
-        color={color}
-        size={size}
-        disabled={!drawing.enabled}
-        onSelectColor={selectColor}
-        onSizeChange={setSize}
-      />
       {drawing.error && (
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <p role="status">{drawing.error}</p>

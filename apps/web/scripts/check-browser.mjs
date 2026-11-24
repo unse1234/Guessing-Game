@@ -260,13 +260,23 @@ test(
 
     const purple = button(host, 'Purple');
     const ink = [147, 51, 234, 255];
-    assert.equal(
-      await host
-        .getByRole('group', { name: 'Colors' })
-        .getByRole('button')
-        .count(),
-      12,
-    );
+    const colors = host.getByRole('group', { name: 'Colors' });
+    await ready(purple);
+    assert.equal(await colors.getByRole('button').count(), 12);
+    for (const viewport of [
+      { width: 375, height: 540 },
+      { width: 320, height: 568 },
+      viewports[1],
+      deviceViewports[0],
+    ]) {
+      await host.setViewportSize(viewport);
+      await host.evaluate(() => globalThis.scrollTo(0, 0));
+      const bounds = await colors.boundingBox();
+      assert.ok(
+        bounds && bounds.y >= 0 && bounds.y + bounds.height <= viewport.height,
+        `The drawer's palette should be visible at ${viewport.width} × ${viewport.height}`,
+      );
+    }
     const size = await purple.boundingBox();
     assert.ok(
       size && size.width >= 44 && size.height >= 44,
