@@ -75,6 +75,7 @@ Real environment files are ignored by Git.
    pnpm --filter @draw-and-guess/web test:rooms
    pnpm --filter @draw-and-guess/web test:game
    pnpm --filter @draw-and-guess/web test:drawing
+   pnpm --filter @draw-and-guess/web test:guessing
    ```
 
    The health response is `{"status":"ok"}`. For a customized setup, set `NEXT_PUBLIC_SOCKET_URL` and `FRONTEND_URL` in the terminal before running the checks. The room integration test measures acknowledgement and peer-update timings. Set `NODE_ENV=development` on the API process to include a send timestamp for the browser’s development propagation log.
@@ -86,6 +87,7 @@ pnpm build
 pnpm --filter @draw-and-guess/api test:rooms
 pnpm --filter @draw-and-guess/api test:game
 pnpm --filter @draw-and-guess/api test:drawing
+pnpm --filter @draw-and-guess/api test:guessing
 pnpm --filter @draw-and-guess/web test:drawing-client
 ```
 
@@ -146,3 +148,11 @@ After choosing a word, draw in one window and watch in another. Try changing siz
 The drawer renders input locally on the 900 × 600 logical canvas. Preview packets carry up to 64 new coordinate pairs about every 24 ms. Slow transports may skip previews. A reliable final stroke replaces the preview with complete coordinates. Eraser strokes use the same ordered replay as pen strokes.
 
 Reconnect restores the current turn and deadline, then loads an authoritative canvas snapshot. If a disconnect interrupts an unfinished stroke, the server preserves the prefix it received. Clear advances the canvas version, so older packets are rejected. The server caps a stroke at 1,536 points and a canvas at 256 strokes or 24,576 points. A separate turn budget remains in effect across clears. Drawing state lives in memory and is released when the room closes.
+
+## Phase 4
+
+Start a room in separate browser profiles with a drawer and two guessers. Pick a word and submit a wrong guess with Enter or Send. Check that everyone sees the message and only the guesser sees their point award after a correct guess. Refresh a guesser to verify the same chat, scoreboard, deadline, and submission eligibility are restored. When the other guesser answers, check that drawing and guessing close and the word is revealed. With an unsolved guesser, the original deadline ends the turn.
+
+The server awards `100 + 5 × ceil(remaining milliseconds / 1000)` on each player's first correct answer. The drawer earns 50 per correct player up to 200 per turn. The server allows a burst of four guesses per player and replenishes one slot every 500 ms. A disconnected guesser stays eligible during the 15-second reconnect window. Leaving or expiry removes them from consideration for early completion.
+
+`guess:submit` takes a room code, turn ID, request ID, and guess. The requesting socket receives the private result in its acknowledgement. Other players see `guess:message` for an incorrect guess or `guess:player-correct` with a generic notice and changed score totals. `game:get-state` restores up to 100 incorrect guesses, generic success notices, scores, and the current player's own award. `game:state` publishes the end and reveals the answer. This phase still runs one drawing turn.

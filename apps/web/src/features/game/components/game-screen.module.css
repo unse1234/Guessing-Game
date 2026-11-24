@@ -86,6 +86,49 @@
   }
 }
 
+@media (min-width: 45rem) and (max-height: 30rem) {
+  .gameGrid {
+    grid-template-areas: 'players drawing guesses';
+    grid-template-columns:
+      minmax(7.5rem, 1fr)
+      minmax(0, 3fr)
+      minmax(9.5rem, 1.2fr);
+  }
+
+  .playerList {
+    max-height: max(5rem, calc(100svh - 8rem));
+    overflow-y: auto;
+  }
+
+  .canvasSlot {
+    max-width: max(12rem, calc((100svh - 15rem) * 1.5));
+  }
+
+  .drawingBoard[data-readonly='true'] .board {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drawingBoard[data-readonly='true'] .tools,
+  .drawingBoard[data-readonly='true'] .toolbar {
+    display: none;
+  }
+
+  .drawingBoard[data-readonly='true'] .canvasSlot {
+    max-width: max(12rem, calc((100svh - 11rem) * 1.5));
+  }
+
+  @container (min-width: 25rem) {
+    .toolbar {
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+    }
+
+    .toolbar [role='group'] > span {
+      display: none;
+    }
+  }
+}
+
 @media (min-width: 64rem) and (min-height: 43rem) {
   .presets {
     display: grid;

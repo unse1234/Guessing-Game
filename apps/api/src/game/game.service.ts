@@ -1,19 +1,40 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, type OnModuleDestroy } from '@nestjs/common';
 import {
+  GUESS_HISTORY_LIMIT,
   roomError,
   type GamePhase,
   type GameView,
+  type GuessActivity,
+  type GuessMessage,
+  type GuessNotice,
+  type GuessReceipt,
+  type GuessSubmit,
   type PrivateGameWord,
   type PublicGameState,
   type RoomResponse,
   type RoomSnapshot,
 } from '@draw-and-guess/shared';
 import { RoomsService } from '../rooms/rooms.service';
+import { scoreCorrectGuess } from '../scoring/scoring';
 import { pickWordOptions } from './word-bank';
 
 const selectionMs = 15_000;
 const drawingMs = 60_000;
+const guessBurst = 4;
+const guessRefillMs = 500;
+const maxRequestsPerPlayer = guessBurst + drawingMs / guessRefillMs;
+
+interface Guesser {
+  points: number | null;
+  receipts: Map<string, GuessReceipt>;
+  tokens: number;
+  lastRefill: number;
+}
+
+function normalizeGuess(value: string) {
+  return value.normalize('NFKC').toLowerCase().replace(/\s+/gu, ' ').trim();
+}
 
 interface ActiveGame {
   code: string;
@@ -25,6 +46,14 @@ interface ActiveGame {
   deadline: number | null;
   options: readonly [string, string, string];
   selectedWord: string | null;
+  normalizedAnswer: string;
+  scores: Map<string, number>;
+  drawerBonus: number;
+  pendingGuessers: Set<string>;
+  guessers: Map<string, Guesser>;
+  history: GuessMessage[];
+  correct: GuessNotice[];
+  sequence: number;
   timer?: ReturnType<typeof setTimeout>;
 }
 
@@ -38,10 +67,15 @@ export interface GameTransition {
 export class GameService implements OnModuleDestroy {
   private readonly games = new Map<string, ActiveGame>();
   private readonly unsubscribe: () => void;
+  private readonly unsubscribeRemoval: () => void;
   private readonly listeners = new Set<(transition: GameTransition) => void>();
 
   constructor(private readonly rooms: RoomsService) {
     this.unsubscribe = rooms.onRoomClosed((code) => this.removeGame(code));
+    this.unsubscribeRemoval = rooms.onPlayerRemoved((code, playerId) => {
+      const game = this.games.get(code);
+      if (game?.pendingGuessers.delete(playerId)) this.finishIfSolved(game);
+    });
   }
 
   onTransition(publish: (transition: GameTransition) => void) {
@@ -77,16 +111,38 @@ export class GameService implements OnModuleDestroy {
     const eligible = room.players.filter((member) => member.isOnline);
     if (eligible.length < 2) return roomError('NOT_ENOUGH_PLAYERS');
 
+    const drawerId = eligible[0].id;
+    const guesserIds = room.players
+      .filter(({ id }) => id !== drawerId)
+      .map(({ id }) => id);
     const game: ActiveGame = {
       code,
       turnId: randomUUID(),
-      drawerId: eligible[0].id,
+      drawerId,
       totalTurns: eligible.length,
       phase: 'word_selection',
       revision: 1,
       deadline: Date.now() + selectionMs,
       options: pickWordOptions(),
       selectedWord: null,
+      normalizedAnswer: '',
+      scores: new Map(room.players.map(({ id }) => [id, 0])),
+      drawerBonus: 0,
+      pendingGuessers: new Set(guesserIds),
+      guessers: new Map(
+        guesserIds.map((id) => [
+          id,
+          {
+            points: null,
+            receipts: new Map(),
+            tokens: guessBurst,
+            lastRefill: performance.now(),
+          },
+        ]),
+      ),
+      history: [],
+      correct: [],
+      sequence: 0,
     };
     const playingRoom = this.rooms.markPlaying(code);
     if (!playingRoom) return roomError('GAME_STARTED');
@@ -100,6 +156,73 @@ export class GameService implements OnModuleDestroy {
       room: playingRoom,
     });
     return { ok: true, data: snapshot };
+  }
+
+  submitGuess(
+    socketId: string,
+    { code, turnId, requestId, guess }: GuessSubmit,
+  ): RoomResponse<{ receipt: GuessReceipt; activity?: GuessActivity }> {
+    const member = this.rooms.authorize(socketId, code);
+    if (!member.ok) return member;
+    const game = this.games.get(code);
+    if (!game || game.turnId !== turnId) return roomError('GUESS_CLOSED');
+    const playerId = member.data;
+    if (playerId === game.drawerId) return roomError('DRAWER_CANNOT_GUESS');
+    const player = game.guessers.get(playerId);
+    const playerName = this.rooms.getPlayerName(code, playerId);
+    if (!player || !playerName) return roomError('NOT_IN_ROOM');
+
+    const previous = player.receipts.get(requestId);
+    if (previous) return { ok: true, data: { receipt: previous } };
+    const now = Date.now();
+    if (game.phase !== 'drawing' || game.deadline === null)
+      return roomError('GUESS_CLOSED');
+    if (now >= game.deadline) {
+      this.finishDrawing(game);
+      return roomError('GUESS_CLOSED');
+    }
+    if (player.points !== null) return roomError('ALREADY_GUESSED');
+    if (!this.takeGuessToken(player)) return roomError('RATE_LIMITED');
+
+    const scope = {
+      roomCode: code,
+      turnId,
+      sequence: ++game.sequence,
+      playerId,
+      playerName,
+    };
+    const normalized = normalizeGuess(guess);
+    if (normalized !== game.normalizedAnswer) {
+      const receipt = { correct: false, pointsAwarded: 0 } as const;
+      const activity: GuessMessage = {
+        ...scope,
+        kind: 'message',
+        message: normalized.includes(game.normalizedAnswer) ? '…' : guess,
+      };
+      player.receipts.set(requestId, receipt);
+      game.history.push(activity);
+      if (game.history.length > GUESS_HISTORY_LIMIT) game.history.shift();
+      return { ok: true, data: { receipt, activity } };
+    }
+
+    const reward = scoreCorrectGuess(game.deadline - now, game.drawerBonus);
+    const receipt = { correct: true, pointsAwarded: reward.guesser } as const;
+    const total = game.scores.get(playerId)! + reward.guesser;
+    const scores = [{ playerId, points: total }];
+    game.scores.set(playerId, total);
+    if (reward.drawer) {
+      game.drawerBonus += reward.drawer;
+      const drawerTotal = game.scores.get(game.drawerId)! + reward.drawer;
+      game.scores.set(game.drawerId, drawerTotal);
+      scores.push({ playerId: game.drawerId, points: drawerTotal });
+    }
+    const activity: GuessNotice = { ...scope, kind: 'correct', scores };
+    player.receipts.set(requestId, receipt);
+    player.points = reward.guesser;
+    game.pendingGuessers.delete(playerId);
+    game.correct.push(activity);
+    this.finishIfSolved(game);
+    return { ok: true, data: { receipt, activity } };
   }
 
   choose(
@@ -151,7 +274,19 @@ export class GameService implements OnModuleDestroy {
     }
     this.advanceIfDue(game);
 
-    const view: GameView = { game: this.snapshot(game) };
+    const view: GameView = {
+      game: this.snapshot(game),
+      guessing: {
+        sequence: game.sequence,
+        history: game.history.slice(),
+        correct: game.correct.slice(),
+        scores: Array.from(game.scores, ([playerId, points]) => ({
+          playerId,
+          points,
+        })),
+        myPoints: game.guessers.get(player.data)?.points ?? null,
+      },
+    };
     if (player.data === game.drawerId) {
       const word = this.privateWord(game);
       if (word) view.privateWord = word;
@@ -161,6 +296,7 @@ export class GameService implements OnModuleDestroy {
 
   onModuleDestroy() {
     this.unsubscribe();
+    this.unsubscribeRemoval();
     this.listeners.clear();
     for (const game of this.games.values()) clearTimeout(game.timer);
     this.games.clear();
@@ -174,6 +310,7 @@ export class GameService implements OnModuleDestroy {
 
   private beginDrawing(game: ActiveGame, word: string) {
     game.selectedWord = word;
+    game.normalizedAnswer = normalizeGuess(word);
     game.phase = 'drawing';
     game.revision++;
     game.deadline = Date.now() + drawingMs;
@@ -189,13 +326,39 @@ export class GameService implements OnModuleDestroy {
     if (game.phase === 'word_selection') {
       this.beginDrawing(game, game.options[0]);
     } else if (game.phase === 'drawing') {
-      clearTimeout(game.timer);
-      game.timer = undefined;
-      game.phase = 'turn_ended';
-      game.revision++;
-      game.deadline = null;
-      this.publish({ game: this.snapshot(game) });
+      this.finishDrawing(game);
     }
+  }
+
+  private takeGuessToken(player: Guesser) {
+    if (player.receipts.size >= maxRequestsPerPlayer) return false;
+    const now = performance.now();
+    player.tokens = Math.min(
+      guessBurst,
+      player.tokens + (now - player.lastRefill) / guessRefillMs,
+    );
+    player.lastRefill = now;
+    if (player.tokens < 1) return false;
+    player.tokens--;
+    return true;
+  }
+
+  private finishIfSolved(game: ActiveGame) {
+    if (
+      game.phase === 'drawing' &&
+      game.correct.length &&
+      !game.pendingGuessers.size
+    )
+      this.finishDrawing(game);
+  }
+
+  private finishDrawing(game: ActiveGame) {
+    clearTimeout(game.timer);
+    game.timer = undefined;
+    game.phase = 'turn_ended';
+    game.revision++;
+    game.deadline = null;
+    this.publish({ game: this.snapshot(game) });
   }
 
   private schedule(game: ActiveGame) {
@@ -226,6 +389,9 @@ export class GameService implements OnModuleDestroy {
       totalTurns: game.totalTurns,
       phaseEndsAt: game.deadline,
       maskedWord: game.selectedWord?.replace(/\p{L}/gu, '_') ?? null,
+      ...(game.phase === 'turn_ended' && game.selectedWord
+        ? { revealedWord: game.selectedWord }
+        : {}),
       serverTime: Date.now(),
     };
   }

@@ -5,6 +5,7 @@ import {
   MAX_BRUSH_SIZE,
   MAX_DRAW_BATCH_POINTS,
   MAX_DRAW_STROKE_POINTS,
+  MAX_GUESS_LENGTH,
   MIN_BRUSH_SIZE,
 } from './types';
 
@@ -41,11 +42,26 @@ export const wordChooseSchema = gameRoomSchema.extend({
   word: z.string().min(1).max(40),
 });
 
+export const guessTextSchema = z
+  .string()
+  .refine((value) => !/[\p{Cc}\p{Cf}\p{Cs}]/u.test(value))
+  .trim()
+  .refine((value) => {
+    const length = [...value].length;
+    return length > 0 && length <= MAX_GUESS_LENGTH;
+  });
+
+const operationId = z.string().regex(/^[0-9a-f]{32}$/);
+export const guessSubmitSchema = gameRoomSchema.extend({
+  turnId: z.uuid(),
+  requestId: operationId,
+  guess: guessTextSchema,
+});
+
 export const drawSyncSchema = z.strictObject({ turnId: z.uuid() });
 export const drawClearSchema = drawSyncSchema.extend({
   canvasVersion: z.number().int().nonnegative(),
 });
-const strokeId = z.string().regex(/^[0-9a-f]{32}$/);
 const x = z.number().int().min(0).max(DRAWING_WIDTH);
 const y = z.number().int().min(0).max(DRAWING_HEIGHT);
 function pointsSchema(limit: number) {
@@ -61,18 +77,18 @@ function pointsSchema(limit: number) {
 }
 
 export const drawStartSchema = drawClearSchema.extend({
-  id: strokeId,
+  id: operationId,
   tool: z.enum(['pen', 'eraser']),
   color: z.string().regex(/^#[0-9a-f]{6}$/i),
   size: z.number().int().min(MIN_BRUSH_SIZE).max(MAX_BRUSH_SIZE),
   point: z.tuple([x, y]),
 });
 export const drawPointsSchema = drawClearSchema.extend({
-  id: strokeId,
+  id: operationId,
   sequence: z.number().int().nonnegative().max(MAX_DRAW_STROKE_POINTS),
   points: pointsSchema(MAX_DRAW_BATCH_POINTS),
 });
 export const drawEndSchema = drawClearSchema.extend({
-  id: strokeId,
+  id: operationId,
   points: pointsSchema(MAX_DRAW_STROKE_POINTS),
 });

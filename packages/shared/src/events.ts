@@ -8,6 +8,7 @@ import type {
   roomRejoinSchema,
   gameRoomSchema,
   wordChooseSchema,
+  guessSubmitSchema,
   drawStartSchema,
   drawPointsSchema,
   drawEndSchema,
@@ -21,6 +22,9 @@ import type {
   DrawingSnapshot,
   DrawingStarted,
   GameView,
+  GuessMessage,
+  GuessNotice,
+  GuessReceipt,
   PublicGameState,
   RoomAck,
   RoomClosed,
@@ -45,6 +49,9 @@ export const SOCKET_EVENTS = {
   wordOptions: 'word:options',
   wordChoose: 'word:choose',
   wordConfirmed: 'word:confirmed',
+  guessSubmit: 'guess:submit',
+  guessMessage: 'guess:message',
+  guessPlayerCorrect: 'guess:player-correct',
   drawStart: 'draw:start',
   drawPoints: 'draw:points',
   drawEnd: 'draw:end',
@@ -61,6 +68,7 @@ export type RoomLeave = z.infer<typeof roomLeaveSchema>;
 export type RoomRejoin = z.infer<typeof roomRejoinSchema>;
 export type GameRoomRequest = z.infer<typeof gameRoomSchema>;
 export type WordChoose = z.infer<typeof wordChooseSchema>;
+export type GuessSubmit = z.infer<typeof guessSubmitSchema>;
 export type DrawStart = z.infer<typeof drawStartSchema>;
 export type DrawPoints = z.infer<typeof drawPointsSchema>;
 export type DrawEnd = z.infer<typeof drawEndSchema>;
@@ -108,6 +116,10 @@ export interface ClientToServerEvents {
     payload: WordChoose,
     ack: RoomAck<PublicGameState>,
   ) => void;
+  [SOCKET_EVENTS.guessSubmit]: (
+    payload: GuessSubmit,
+    ack: RoomAck<GuessReceipt>,
+  ) => void;
 }
 
 export interface ServerToClientEvents {
@@ -122,4 +134,6 @@ export interface ServerToClientEvents {
   [SOCKET_EVENTS.gameState]: (game: PublicGameState) => void;
   [SOCKET_EVENTS.wordOptions]: (options: WordOptions) => void;
   [SOCKET_EVENTS.wordConfirmed]: (confirmation: WordConfirmed) => void;
+  [SOCKET_EVENTS.guessMessage]: (message: GuessMessage) => void;
+  [SOCKET_EVENTS.guessPlayerCorrect]: (notice: GuessNotice) => void;
 }

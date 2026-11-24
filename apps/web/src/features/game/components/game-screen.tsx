@@ -27,7 +27,7 @@ const phaseLabels = {
 };
 
 export function GameScreen({ code }: { code: string }) {
-  const { room, playerId, connected, game, syncError, retry } =
+  const { room, playerId, connected, game, guessReady, syncError, retry } =
     useGameSession(code);
   const connection = useRoomStore((state) => state.connection);
   const notice = useRoomStore((state) => state.notice);
@@ -48,7 +48,8 @@ export function GameScreen({ code }: { code: string }) {
   const needsRoom = connected && room === null;
   const awaitingGame =
     !game || (game.phase === 'waiting' && room?.status === 'playing');
-  const activeError = connected && room && awaitingGame ? syncError : null;
+  const activeError =
+    connected && room && (awaitingGame || !guessReady) ? syncError : null;
   const status = !connected
     ? connection === 'offline'
       ? (notice ?? 'Connection interrupted.')
@@ -102,7 +103,7 @@ export function GameScreen({ code }: { code: string }) {
               )}
             </div>
             <WordTimer
-              word={word}
+              word={word ?? game?.revealedWord ?? null}
               mask={game?.maskedWord ?? null}
               deadline={selecting ? null : deadline}
             />
@@ -132,7 +133,11 @@ export function GameScreen({ code }: { code: string }) {
               )}
             </div>
           </section>
-          <GuessPanel />
+          <GuessPanel
+            key={`${code}:${playerId}`}
+            code={code}
+            isDrawer={isDrawer}
+          />
         </div>
       </Card>
       {connected && selecting && choices && deadline !== null && (

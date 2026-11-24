@@ -48,6 +48,9 @@ export class RoomsService implements OnModuleDestroy {
   private scheduledDeadline?: number;
   private expiryListener?: (change: RoomChange) => void;
   private readonly closedListeners = new Set<(code: string) => void>();
+  private readonly removalListeners = new Set<
+    (code: string, playerId: string) => void
+  >();
 
   onExpiry(listener: (change: RoomChange) => void) {
     this.expiryListener = listener;
@@ -58,6 +61,11 @@ export class RoomsService implements OnModuleDestroy {
     return () => {
       this.closedListeners.delete(listener);
     };
+  }
+
+  onPlayerRemoved(listener: (code: string, playerId: string) => void) {
+    this.removalListeners.add(listener);
+    return () => this.removalListeners.delete(listener);
   }
 
   getConnection(socketId: string) {
@@ -88,6 +96,10 @@ export class RoomsService implements OnModuleDestroy {
 
   getPlayerSocket(code: string, playerId: string) {
     return this.rooms.get(code)?.players.get(playerId)?.socketId;
+  }
+
+  getPlayerName(code: string, playerId: string) {
+    return this.rooms.get(code)?.players.get(playerId)?.nickname;
   }
 
   create(socketId: string, nickname: string): MembershipResult {
@@ -185,6 +197,7 @@ export class RoomsService implements OnModuleDestroy {
     clearTimeout(this.expiryTimer);
     this.expiryListener = undefined;
     this.closedListeners.clear();
+    this.removalListeners.clear();
     this.pending.clear();
     this.connections.clear();
     this.sessions.clear();
@@ -260,6 +273,7 @@ export class RoomsService implements OnModuleDestroy {
           ?.id ?? null;
     }
     room.revision++;
+    for (const listener of this.removalListeners) listener(room.code, id);
     return { kind: 'updated', room: this.snapshot(room) };
   }
 

@@ -6,7 +6,6 @@ import { SocketGateway } from './common/socket.gateway';
 import { DrawingModule } from './drawing/drawing.module';
 import { GameModule } from './game/game.module';
 import { RoomsModule } from './rooms/rooms.module';
-import { ScoringModule } from './scoring/scoring.module';
 
 @Module({
   imports: [
@@ -17,7 +16,6 @@ import { ScoringModule } from './scoring/scoring.module';
     RoomsModule,
     GameModule,
     DrawingModule,
-    ScoringModule,
   ],
   controllers: [HealthController],
   providers: [SocketGateway],

@@ -55,6 +55,11 @@ export const ROOM_ERROR_MESSAGES = {
   INVALID_WORD: 'Choose one of the words offered to you.',
   WRONG_PHASE: 'The game is no longer accepting word choices for this turn.',
   DEADLINE_PASSED: 'The word selection time has expired.',
+  INVALID_GUESS:
+    'Enter a guess of up to 80 characters without control characters.',
+  GUESS_CLOSED: 'This turn is no longer accepting guesses.',
+  DRAWER_CANNOT_GUESS: 'The drawer cannot submit guesses.',
+  ALREADY_GUESSED: 'You already guessed the word.',
   STALE_CANVAS: 'The canvas changed. Restoring its current state.',
   INVALID_STROKE: 'This drawing operation could not be applied.',
   DRAWING_LIMIT:
@@ -101,6 +106,7 @@ export interface PublicGameState {
   totalTurns: number;
   phaseEndsAt: number | null;
   maskedWord: string | null;
+  revealedWord?: string;
   serverTime: number;
 }
 
@@ -122,6 +128,7 @@ export type PrivateGameWord = WordOptions | WordConfirmed;
 export interface GameView {
   game: PublicGameState;
   privateWord?: PrivateGameWord;
+  guessing?: GuessSnapshot;
 }
 
 export const DRAWING_WIDTH = 900;
@@ -167,4 +174,39 @@ export interface DrawingSnapshot extends DrawingReceipt {
 export interface ScoreEntry {
   playerId: string;
   points: number;
+}
+
+export const MAX_GUESS_LENGTH = 80;
+export const GUESS_HISTORY_LIMIT = 100;
+
+interface GuessActivityBase {
+  roomCode: string;
+  turnId: string;
+  sequence: number;
+  playerId: string;
+  playerName: string;
+}
+
+export interface GuessMessage extends GuessActivityBase {
+  kind: 'message';
+  message: string;
+}
+
+export interface GuessNotice extends GuessActivityBase {
+  kind: 'correct';
+  scores: ScoreEntry[];
+}
+
+export type GuessActivity = GuessMessage | GuessNotice;
+
+export type GuessReceipt =
+  | { correct: false; pointsAwarded: 0 }
+  | { correct: true; pointsAwarded: number };
+
+export interface GuessSnapshot {
+  sequence: number;
+  history: GuessMessage[];
+  correct: GuessNotice[];
+  scores: ScoreEntry[];
+  myPoints: number | null;
 }

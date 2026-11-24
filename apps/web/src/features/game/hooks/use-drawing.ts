@@ -4,6 +4,7 @@ import {
   type BrushSettings,
   type DrawingStroke,
 } from '@draw-and-guess/shared';
+import { createOperationId } from '@/features/game/lib/operation-id';
 import type { DrawingPoint } from '@/features/game/types/drawing';
 
 interface StrokeHandlers {
@@ -33,10 +34,11 @@ export function useDrawing(handlers: StrokeHandlers) {
 
   function start(pointerId: number, point: DrawingPoint, brush: BrushSettings) {
     if (active.current) return false;
-    const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (value) =>
-      value.toString(16).padStart(2, '0'),
-    ).join('');
-    const stroke = { ...brush, id, points: [point.x, point.y] };
+    const stroke = {
+      ...brush,
+      id: createOperationId(),
+      points: [point.x, point.y],
+    };
     if (!handlers.start(stroke)) return false;
     active.current = { pointerId, stroke };
     setPreview({ ...stroke, points: [...stroke.points] });

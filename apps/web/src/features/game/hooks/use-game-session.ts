@@ -15,6 +15,9 @@ export function useGameSession(code: string) {
   const game = useGameStore((state) =>
     state.game?.roomCode === code ? state.game : null,
   );
+  const guessReady = useGameStore(
+    (state) => state.game?.roomCode === code && state.guessReady,
+  );
   const [syncError, setSyncError] = useState<string | null>(null);
 
   const load = useCallback(
@@ -30,10 +33,10 @@ export function useGameSession(code: string) {
   const roomStatus = room?.status;
   useEffect(() => {
     if (!connected || !playerId || !roomStatus) return;
-    const current = useGameStore.getState().game;
+    const { game: current, guessReady } = useGameStore.getState();
     if (
       current?.roomCode === code &&
-      (current.phase !== 'waiting' || roomStatus === 'waiting')
+      (guessReady || (current.phase === 'waiting' && roomStatus === 'waiting'))
     )
       return;
 
@@ -51,5 +54,5 @@ export function useGameSession(code: string) {
     setSyncError(result.ok ? null : result.error.message);
   }
 
-  return { room, playerId, connected, game, syncError, retry };
+  return { room, playerId, connected, game, guessReady, syncError, retry };
 }

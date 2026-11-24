@@ -11,7 +11,8 @@
     "test:rooms": "node --test scripts/check-rooms.mjs",
     "test:game": "node --test scripts/check-game.mjs",
     "test:drawing": "node --test scripts/check-drawing.mjs",
-    "test:drawing-client": "node --test scripts/drawing-client.test.mjs"
+    "test:drawing-client": "node --test scripts/drawing-client.test.mjs",
+    "test:guessing": "node --test scripts/check-guessing.mjs"
   },
   "dependencies": {
     "@draw-and-guess/shared": "workspace:*",

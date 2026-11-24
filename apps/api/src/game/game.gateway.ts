@@ -1,9 +1,11 @@
 import {
   gameRoomSchema,
+  guessSubmitSchema,
   roomError,
   SOCKET_EVENTS,
   wordChooseSchema,
   type GameView,
+  type GuessReceipt,
   type PublicGameState,
   type RoomAck,
 } from '@draw-and-guess/shared';
@@ -84,6 +86,33 @@ export class GameGateway implements OnGatewayInit {
     }
     const { code, revision, word } = parsed.data;
     ack(this.games.choose(socket.id, code, revision, word));
+  }
+
+  @SubscribeMessage(SOCKET_EVENTS.guessSubmit)
+  submitGuess(
+    @ConnectedSocket() socket: RoomSocket,
+    @MessageBody() raw: unknown,
+    @Ack() ack: RoomAck<GuessReceipt>,
+  ) {
+    if (!socket.connected || typeof ack !== 'function') return;
+    const parsed = guessSubmitSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack(roomError('INVALID_GUESS'));
+      return;
+    }
+    const result = this.games.submitGuess(socket.id, parsed.data);
+    if (!result.ok) {
+      ack(result);
+      return;
+    }
+    const { activity, receipt } = result.data;
+    if (activity) {
+      const target = this.server.to(channel(activity.roomCode));
+      if (activity.kind === 'message')
+        target.emit(SOCKET_EVENTS.guessMessage, activity);
+      else target.emit(SOCKET_EVENTS.guessPlayerCorrect, activity);
+    }
+    ack({ ok: true, data: receipt });
   }
 
   private broadcast({ game, privateWord, room }: GameTransition) {
