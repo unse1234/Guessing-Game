@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { FeedbackToaster } from '@/components/layout/feedback-toaster';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ChooseWordDialog } from '@/features/game/components/choose-word-dialog';
@@ -152,13 +153,16 @@ export function GameScreen({ code }: { code: string }) {
           deadline={deadline}
         />
       )}
-      {connected && summary && deadline !== null && (
+      {connected && summary && game?.gameId && deadline !== null && (
         <TurnSummaryDialog
           key={game?.turnId}
+          code={code}
+          gameId={game.gameId}
           summary={summary}
           deadline={deadline}
         />
       )}
+      <FeedbackToaster />
     </main>
   );
 }

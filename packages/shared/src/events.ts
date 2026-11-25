@@ -17,8 +17,10 @@ import type {
   drawClearSchema,
   drawUndoSchema,
   drawSyncSchema,
+  drawCompletedSchema,
 } from './schemas';
 import type {
+  CompletedDrawingSnapshot,
   DrawingBatch,
   DrawingEnded,
   DrawingReceipt,
@@ -63,6 +65,7 @@ export const SOCKET_EVENTS = {
   drawClear: 'draw:clear',
   drawUndo: 'draw:undo',
   drawSync: 'draw:sync',
+  drawCompleted: 'draw:completed',
 } as const;
 
 export type Ping = z.infer<typeof pingSchema>;
@@ -82,6 +85,7 @@ export type DrawEnd = z.infer<typeof drawEndSchema>;
 export type DrawClear = z.infer<typeof drawClearSchema>;
 export type DrawUndo = z.infer<typeof drawUndoSchema>;
 export type DrawSync = z.infer<typeof drawSyncSchema>;
+export type DrawCompleted = z.infer<typeof drawCompletedSchema>;
 
 export interface ClientToServerEvents {
   [SOCKET_EVENTS.drawStart]: (
@@ -104,6 +108,10 @@ export interface ClientToServerEvents {
   [SOCKET_EVENTS.drawSync]: (
     payload: DrawSync,
     ack: RoomAck<DrawingSnapshot>,
+  ) => void;
+  [SOCKET_EVENTS.drawCompleted]: (
+    payload: DrawCompleted,
+    ack: RoomAck<CompletedDrawingSnapshot>,
   ) => void;
   [SOCKET_EVENTS.ping]: (payload: Ping) => void;
   [SOCKET_EVENTS.roomCreate]: (

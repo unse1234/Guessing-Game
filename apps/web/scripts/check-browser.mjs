@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import process from 'node:process';
 import test from 'node:test';
@@ -162,7 +163,12 @@ async function chooseWord(drawer, guessers) {
   return word;
 }
 
-async function drawLine(page, duringStroke) {
+async function drawLine(
+  page,
+  duringStroke,
+  from = [0.23, 0.42],
+  to = [0.77, 0.42],
+) {
   const surface = page.getByRole('img', {
     name: 'Drawing canvas',
     exact: true,
@@ -170,12 +176,18 @@ async function drawLine(page, duringStroke) {
   await surface.waitFor(wait);
   await surface.scrollIntoViewIfNeeded();
   const box = await surface.boundingBox();
-  const y = box.y + box.height * 0.42;
-  await page.mouse.move(box.x + box.width * 0.23, y);
+  await page.mouse.move(
+    box.x + box.width * from[0],
+    box.y + box.height * from[1],
+  );
   await page.mouse.down();
   try {
     if (duringStroke) await duringStroke();
-    await page.mouse.move(box.x + box.width * 0.77, y, { steps: 6 });
+    await page.mouse.move(
+      box.x + box.width * to[0],
+      box.y + box.height * to[1],
+      { steps: 6 },
+    );
   } finally {
     await page.mouse.up();
   }
@@ -839,6 +851,196 @@ test(
       await host.locator('button[aria-label="Undo last stroke"]').isDisabled(),
       true,
     );
+    assert.deepEqual(errors, []);
+  },
+);
+
+async function downloadPng(page, control, mobile) {
+  const started = page.waitForEvent('download', wait);
+  if (mobile) await control.tap();
+  else await control.click();
+  const download = await started;
+  const bytes = await readFile(await download.path());
+  assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+  return {
+    filename: download.suggestedFilename(),
+    width: bytes.readUInt32BE(16),
+    height: bytes.readUInt32BE(20),
+    base64: bytes.toString('base64'),
+  };
+}
+
+function exportedPixels(page, png, coordinates) {
+  return page.evaluate(
+    async ({ base64, coordinates }) => {
+      const bytes = Uint8Array.from(globalThis.atob(base64), (character) =>
+        character.charCodeAt(0),
+      );
+      const image = await globalThis.createImageBitmap(
+        new globalThis.Blob([bytes], { type: 'image/png' }),
+      );
+      const canvas = globalThis.document.createElement('canvas');
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const context = canvas.getContext('2d');
+      context.drawImage(image, 0, 0);
+      image.close();
+      return coordinates.map(([x, y]) =>
+        Array.from(
+          context.getImageData(
+            Math.round(x * canvas.width),
+            Math.round(y * canvas.height),
+            1,
+            1,
+          ).data,
+        ),
+      );
+    },
+    { base64: png.base64, coordinates },
+  );
+}
+
+test(
+  'completed drawings download as opaque PNGs from the summary and refreshed results',
+  { timeout: 80_000 },
+  async (t) => {
+    const variant = process.env.QA_PNG_BROWSER;
+    const mobile = variant === 'mobile';
+    const { host, guests, pages, start, errors } = await fixture(t, 2, mobile, {
+      browserType: variant === 'firefox' ? firefox : chromium,
+    });
+    const [guest] = guests;
+    await start();
+    const word = await chooseWord(host, guests);
+    const undo = button(host, 'Undo last stroke');
+    const slider = host.getByRole('slider', { name: 'Brush size' });
+    await button(host, 'Coral').click();
+    await slider.press('End');
+    await drawLine(host, undefined, [0.23, 0.35], [0.77, 0.35]);
+    await button(host, 'Cobalt').click();
+    await slider.press('Home');
+    await slider.press('ArrowRight');
+    await slider.press('ArrowRight');
+    await slider.press('ArrowRight');
+    await slider.press('ArrowRight');
+    await drawLine(host, undefined, [0.23, 0.65], [0.77, 0.65]);
+    await drawLine(host, undefined, [0.18, 0.65], [0.18, 0.65]);
+    await button(host, 'Eraser').click();
+    await slider.press('End');
+    await drawLine(host, undefined, [0.5, 0.29], [0.5, 0.41]);
+    await button(host, 'Mint').click();
+    await drawLine(host, undefined, [0.23, 0.8], [0.77, 0.8]);
+    await ready(undo);
+    await undo.click();
+    await ready(undo);
+
+    await submit(guest, word);
+    const summary = dialog(guest, 'Turn Complete');
+    await summary.waitFor(wait);
+    const download = button(summary, 'Download Drawing');
+    await guest.setViewportSize(viewports[1]);
+    await guest.evaluate(() => {
+      globalThis.document.documentElement.style.fontSize = '125%';
+    });
+    const first = await downloadPng(guest, download, mobile);
+    assert.equal(first.filename, 'draw-and-guess-round-1-hammad.png');
+    assert.deepEqual([first.width, first.height], [1800, 1200]);
+    const white = [255, 255, 255, 255];
+    const coral = [244, 63, 94, 255];
+    const cobalt = [29, 78, 216, 255];
+    const probes = [
+      [0.01, 0.01],
+      [0.35, 0.35],
+      [0.35, 0.365],
+      [0.35, 0.38],
+      [0.5, 0.35],
+      [0.35, 0.65],
+      [0.35, 0.665],
+      [0.18, 0.65],
+      [0.5, 0.8],
+    ];
+    const expectedPixels = [
+      white,
+      coral,
+      coral,
+      white,
+      white,
+      cobalt,
+      white,
+      cobalt,
+      white,
+    ];
+    assert.deepEqual(
+      await exportedPixels(guest, first, probes),
+      expectedPixels,
+    );
+    await guest.evaluate(() => {
+      globalThis.document.documentElement.style.fontSize = '';
+    });
+    await guest.setViewportSize(mobile ? deviceViewports[0] : viewports[1]);
+    await guest.reload();
+
+    for (let turn = 1; turn < 4; turn++) {
+      const [drawer, guesser] = turn % 2 ? [guest, host] : [host, guest];
+      const answer = await chooseWord(drawer, [guesser]);
+      if (turn === 3) {
+        await button(drawer, 'Cobalt').click();
+        await drawer.getByRole('slider', { name: 'Brush size' }).press('End');
+        await drawLine(drawer);
+        await ready(button(drawer, 'Undo last stroke'));
+      }
+      await submit(guesser, answer);
+    }
+
+    await Promise.all(
+      pages.map((page) => page.waitForURL('**/results/*', wait)),
+    );
+    await guest.reload();
+    await button(guest, 'Completed drawings').click();
+    const picker = dialog(guest, 'Completed drawings');
+    const select = picker.getByRole('combobox', { name: 'Completed drawing' });
+    assert.equal(await select.locator('option').count(), 4);
+    const resultDownload = button(picker, 'Download Drawing');
+    const restored = await downloadPng(guest, resultDownload, mobile);
+    assert.equal(restored.filename, first.filename);
+    assert.deepEqual(
+      await exportedPixels(guest, restored, probes),
+      expectedPixels,
+    );
+
+    await select.selectOption({ index: 3 });
+    await guest.evaluate(() => {
+      const prototype = globalThis.HTMLCanvasElement.prototype;
+      const toBlob = prototype.toBlob;
+      prototype.toBlob = function (callback, ...options) {
+        if (this.width > 900) callback(null);
+        else toBlob.call(this, callback, ...options);
+      };
+    });
+    const final = await downloadPng(guest, resultDownload, mobile);
+    assert.equal(
+      final.filename,
+      mobile
+        ? 'draw-and-guess-round-2-b-ali-b.png'
+        : 'draw-and-guess-round-2-ali.png',
+    );
+    assert.deepEqual([final.width, final.height], [900, 600]);
+    assert.deepEqual(
+      await exportedPixels(guest, final, [
+        [0.5, 0.42],
+        [0.01, 0.01],
+      ]),
+      [cobalt, white],
+    );
+
+    await guest.evaluate(() => {
+      globalThis.HTMLCanvasElement.prototype.toBlob = (callback) =>
+        callback(null);
+    });
+    await resultDownload.click();
+    await guest
+      .getByText('Could not create the PNG. Try again.', { exact: true })
+      .waitFor(wait);
     assert.deepEqual(errors, []);
   },
 );

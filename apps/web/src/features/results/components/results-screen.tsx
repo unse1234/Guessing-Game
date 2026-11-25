@@ -6,6 +6,7 @@ import { SoundToggle } from '@/components/layout/sound-toggle';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useGameSession } from '@/features/game/hooks/use-game-session';
+import { CompletedDrawings } from '@/features/results/components/completed-drawings';
 import { FinalScoreboard } from '@/features/results/components/final-scoreboard';
 import { ResultsActions } from '@/features/results/components/results-actions';
 import { WinnerAnnouncement } from '@/features/results/components/winner-announcement';
@@ -40,7 +41,16 @@ export function ResultsScreen({ code }: { code: string }) {
           <div className="flex min-w-0 items-center gap-3">
             <SiteBrand />
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            {!!results?.drawings?.length && (
+              <CompletedDrawings
+                key={results.gameId}
+                code={code}
+                gameId={results.gameId}
+                drawings={results.drawings}
+                connected={connected}
+              />
+            )}
             <SoundToggle />
           </div>
         </header>

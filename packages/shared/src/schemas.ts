@@ -90,6 +90,7 @@ export const guessSubmitSchema = gameRoomSchema.extend({
 });
 
 export const drawSyncSchema = z.strictObject({ turnId: z.uuid() });
+export const drawCompletedSchema = drawSyncSchema.extend({ gameId: z.uuid() });
 export const drawClearSchema = drawSyncSchema.extend({
   canvasVersion: z.number().int().nonnegative(),
 });

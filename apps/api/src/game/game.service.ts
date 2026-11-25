@@ -3,6 +3,8 @@ import { Injectable, type OnModuleDestroy } from '@nestjs/common';
 import {
   GUESS_HISTORY_LIMIT,
   roomError,
+  type CompletedDrawingInfo,
+  type DrawCompleted,
   type FinalGameResults,
   type GamePhase,
   type GameRestart,
@@ -21,6 +23,7 @@ import {
   type TurnSummary,
   type WordChoose,
 } from '@draw-and-guess/shared';
+import type { CompletedCanvas } from '../drawing/completed-canvas';
 import { RoomsService } from '../rooms/rooms.service';
 import { rankPlayerScores, scoreCorrectGuess } from '../scoring/scoring';
 import { gameConfig } from './game-config';
@@ -65,6 +68,10 @@ interface ActiveGame {
   turn: ActiveTurn | null;
   wordPool: WordPool;
   scores: Map<string, number>;
+  drawings: Map<
+    string,
+    { info: CompletedDrawingInfo; canvas: CompletedCanvas }
+  >;
   phase: Exclude<GamePhase, 'waiting'>;
   revision: number;
   deadline: number | null;
@@ -84,6 +91,10 @@ export class GameService implements OnModuleDestroy {
   private readonly unsubscribe: () => void;
   private readonly unsubscribeRemoval: () => void;
   private readonly listeners = new Set<(transition: GameTransition) => void>();
+  private captureDrawing?: (
+    code: string,
+    turnId: string,
+  ) => CompletedCanvas | undefined;
 
   constructor(private readonly rooms: RoomsService) {
     this.unsubscribe = rooms.onRoomClosed((code) => this.removeGame(code));
@@ -98,6 +109,20 @@ export class GameService implements OnModuleDestroy {
     return () => {
       this.listeners.delete(publish);
     };
+  }
+
+  onDrawingCompleted(
+    capture: (code: string, turnId: string) => CompletedCanvas | undefined,
+  ) {
+    this.captureDrawing = capture;
+    return () => {
+      this.captureDrawing = undefined;
+    };
+  }
+
+  getCompletedDrawing(code: string, { gameId, turnId }: DrawCompleted) {
+    const game = this.games.get(code);
+    if (game?.id === gameId) return game.drawings.get(turnId)?.canvas;
   }
 
   getDrawingTurn(code: string) {
@@ -155,6 +180,7 @@ export class GameService implements OnModuleDestroy {
       turn: null,
       wordPool: new WordPool(wordBank),
       scores: new Map(roster.map(({ id }) => [id, 0])),
+      drawings: new Map(),
       phase: 'word_selection',
       revision: 0,
       deadline: null,
@@ -429,6 +455,7 @@ export class GameService implements OnModuleDestroy {
       winnerIds: players
         .filter(({ rank }) => rank === 1)
         .map(({ playerId }) => playerId),
+      drawings: Array.from(game.drawings.values(), ({ info }) => info),
       reason,
       finishedAt: Date.now(),
     };
@@ -477,6 +504,8 @@ export class GameService implements OnModuleDestroy {
     const turn = game.turn;
     if (!turn || (game.phase !== 'drawing' && game.phase !== 'word_selection'))
       return;
+    const drawing =
+      game.phase === 'drawing' ? this.saveDrawing(game, turn.id) : undefined;
     if (this.finishIfComplete(game)) return;
     const awards = game.roster
       .map(({ id, nickname }) => ({
@@ -493,8 +522,30 @@ export class GameService implements OnModuleDestroy {
           points || playerId === turn.drawerId || game.eligible.has(playerId),
       );
     awards.sort((a, b) => b.score - a.score);
-    turn.summary = { reason, word: turn.selectedWord, awards };
+    turn.summary = {
+      reason,
+      word: turn.selectedWord,
+      awards,
+      ...(drawing ? { drawing } : {}),
+    };
     this.transition(game, 'turn_summary', gameConfig.summaryMs);
+  }
+
+  private saveDrawing(
+    game: ActiveGame,
+    turnId: string,
+  ): CompletedDrawingInfo | undefined {
+    const canvas = this.captureDrawing?.(game.code, turnId);
+    if (!canvas) return;
+
+    const info = {
+      turnId,
+      round: Math.floor(game.slot / game.roster.length) + 1,
+      turn: game.currentTurn,
+      drawerName: game.roster[game.slot % game.roster.length].nickname,
+    };
+    game.drawings.set(turnId, { info, canvas });
+    return info;
   }
 
   private transition(

@@ -2,7 +2,9 @@ import { Injectable, type OnModuleDestroy } from '@nestjs/common';
 import {
   MAX_DRAW_STROKE_POINTS,
   roomError,
+  type CompletedDrawingSnapshot,
   type DrawClear,
+  type DrawCompleted,
   type DrawEnd,
   type DrawPoints,
   type DrawStart,
@@ -20,6 +22,7 @@ import {
 } from '@draw-and-guess/shared';
 import { GameService } from '../game/game.service';
 import { RoomsService } from '../rooms/rooms.service';
+import { packCompletedCanvas, unpackCompletedCanvas } from './completed-canvas';
 
 const maxCanvasStrokes = 256;
 const maxCanvasPoints = 24_576;
@@ -61,13 +64,14 @@ export class DrawingService implements OnModuleDestroy {
   ) {
     this.unsubscribe = [
       rooms.onRoomClosed((code) => this.remove(code)),
+      games.onDrawingCompleted((code, turnId) =>
+        this.captureCompleted(code, turnId),
+      ),
       games.onTransition(({ game }) => {
         const canvas = this.canvases.get(game.roomCode);
         if (!game.turnId) this.remove(game.roomCode);
         else if (game.turnId !== canvas?.turnId)
           this.canvasFor(game.roomCode, game.turnId);
-        else if (game.phase === 'turn_summary')
-          this.finalizeInterrupted(canvas);
       }),
     ];
   }
@@ -259,6 +263,20 @@ export class DrawingService implements OnModuleDestroy {
     };
   }
 
+  completed(
+    socketId: string,
+    request: DrawCompleted,
+  ): RoomResponse<CompletedDrawingSnapshot> {
+    const member = this.rooms.getConnection(socketId);
+    if (!member) return roomError('NOT_IN_ROOM');
+    const canvas = this.games.getCompletedDrawing(member.code, request);
+    if (!canvas) return roomError('DRAWING_UNAVAILABLE');
+    return {
+      ok: true,
+      data: { gameId: request.gameId, ...unpackCompletedCanvas(canvas) },
+    };
+  }
+
   disconnect(socketId: string) {
     const canvas = this.activeSockets.get(socketId);
     if (canvas) this.finalizeInterrupted(canvas);
@@ -319,6 +337,17 @@ export class DrawingService implements OnModuleDestroy {
     if (!canvas.active) return;
     const event = this.commit(canvas, canvas.active.stroke);
     this.publishEnd?.(event);
+  }
+
+  private captureCompleted(code: string, turnId: string) {
+    const canvas = this.canvases.get(code);
+    if (canvas?.turnId !== turnId) return;
+    this.finalizeInterrupted(canvas);
+    return packCompletedCanvas(
+      this.receipt(canvas),
+      canvas.strokes.values(),
+      canvas.points,
+    );
   }
 
   private commit(canvas: Canvas, stroke: DrawingStroke): Relay<DrawingEnded> {

@@ -333,6 +333,63 @@ test('live drawing across a full room, optimistic previews, clear, and reconnect
   assert.deepEqual((await snapshot(watchers[2], turnId)).strokes, []);
   assert.equal(undoEvents, 1);
   assert.equal(unrelatedPackets, 0);
+
+  const exportScope = { gameId: selection.gameId, turnId };
+  assert.equal(
+    (await request(refreshed, events.drawCompleted, exportScope)).error.code,
+    'DRAWING_UNAVAILABLE',
+  );
+  const lastStroke = {
+    ...first,
+    id: strokeId(5),
+    canvasVersion: clear.canvasVersion,
+  };
+  success(await request(sender, events.drawStart, lastStroke));
+  success(
+    await request(sender, events.drawEnd, {
+      ...scope,
+      canvasVersion: clear.canvasVersion,
+      id: lastStroke.id,
+      points: full,
+    }),
+  );
+  await Promise.all(
+    watching.map((socket) =>
+      request(socket, events.guessSubmit, {
+        code,
+        turnId,
+        requestId: strokeId(10),
+        guess: options.options[0],
+      }).then(success),
+    ),
+  );
+  const completed = success(
+    await request(refreshed, events.drawCompleted, exportScope),
+  );
+  assert.deepEqual(Object.keys(completed).sort(), [
+    'canvasVersion',
+    'gameId',
+    'revision',
+    'strokes',
+    'turnId',
+  ]);
+  assert.deepEqual(
+    completed.strokes.map(({ id, points }) => ({ id, points })),
+    [{ id: lastStroke.id, points: full }],
+  );
+  assert.equal(
+    (await request(unrelated, events.drawCompleted, exportScope)).error.code,
+    'DRAWING_UNAVAILABLE',
+  );
+  assert.equal(
+    (
+      await request(refreshed, events.drawCompleted, {
+        ...exportScope,
+        gameId: 'invalid',
+      })
+    ).error.code,
+    'INVALID_REQUEST',
+  );
   console.log(
     `[drawing localhost] full stroke across 7 peers: ${strokeMs.toFixed(2)} ms including input and final ACK; final ACK + fan-out ${endMs.toFixed(2)} ms; snapshot ${snapshotMs.toFixed(2)} ms. Stress: ${((batches * 1000) / elapsed).toFixed(1)} batches/s, 64 points/batch, ${Math.round(bytes / batches)} JSON bytes/batch, ${MAX_DRAW_STROKE_POINTS} final points.`,
   );

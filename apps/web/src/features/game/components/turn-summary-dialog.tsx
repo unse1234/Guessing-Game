@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { DownloadDrawingButton } from '@/features/game/components/download-drawing-button';
 import { DeadlineClock } from '@/features/game/components/word-timer';
 
 const reasons = {
@@ -16,9 +17,13 @@ const reasons = {
 };
 
 export function TurnSummaryDialog({
+  code,
+  gameId,
   summary,
   deadline,
 }: {
+  code: string;
+  gameId: string;
   summary: TurnSummary;
   deadline: number;
 }) {
@@ -68,9 +73,18 @@ export function TurnSummaryDialog({
             ))}
           </tbody>
         </table>
-        <p className="flex items-center justify-center gap-2 text-sm">
-          Next turn in <DeadlineClock deadline={deadline} />
-        </p>
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+          <p className="flex items-center gap-2 text-sm">
+            Next turn in <DeadlineClock deadline={deadline} />
+          </p>
+          {summary.drawing && (
+            <DownloadDrawingButton
+              code={code}
+              gameId={gameId}
+              drawing={summary.drawing}
+            />
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -1,5 +1,6 @@
 import {
   drawClearSchema,
+  drawCompletedSchema,
   drawEndSchema,
   drawPointsSchema,
   drawStartSchema,
@@ -7,6 +8,7 @@ import {
   drawUndoSchema,
   roomError,
   SOCKET_EVENTS,
+  type CompletedDrawingSnapshot,
   type DrawingReceipt,
   type DrawingSnapshot,
   type DrawingUndone,
@@ -164,6 +166,18 @@ export class DrawingGateway
     const { code, data } = result.data;
     socket.to(channel(code)).emit(SOCKET_EVENTS.drawUndo, data);
     ack({ ok: true, data });
+  }
+
+  @SubscribeMessage(SOCKET_EVENTS.drawCompleted)
+  completed(
+    @ConnectedSocket() socket: RoomSocket,
+    @MessageBody() raw: unknown,
+    @Ack() ack: RoomAck<CompletedDrawingSnapshot>,
+  ) {
+    if (!this.rooms.allow(socket, ack)) return;
+    const parsed = drawCompletedSchema.safeParse(raw);
+    if (!parsed.success) return ack(roomError('INVALID_REQUEST'));
+    ack(this.drawings.completed(socket.id, parsed.data));
   }
 
   private allowMutation<T extends DrawingReceipt>(

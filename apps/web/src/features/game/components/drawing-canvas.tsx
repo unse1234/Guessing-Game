@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { Circle, Group, Layer, Line, Stage } from 'react-konva';
 import { useDrawing } from '@/features/game/hooks/use-drawing';
+import { strokeShape } from '@/features/game/lib/stroke-shape';
 import {
   DRAWING_HEIGHT,
   DRAWING_WIDTH,
@@ -35,30 +36,11 @@ const StrokeShape = memo(function StrokeShape({
 }: {
   stroke: DrawingStroke;
 }) {
-  const composite =
-    stroke.tool === 'eraser' ? 'destination-out' : 'source-over';
-
-  if (stroke.points.length === 2) {
-    return (
-      <Circle
-        x={stroke.points[0]}
-        y={stroke.points[1]}
-        radius={stroke.size / 2}
-        fill={stroke.color}
-        globalCompositeOperation={composite}
-      />
-    );
-  }
-
-  return (
-    <Line
-      points={stroke.points}
-      stroke={stroke.color}
-      strokeWidth={stroke.size}
-      lineCap="round"
-      lineJoin="round"
-      globalCompositeOperation={composite}
-    />
+  const shape = strokeShape(stroke);
+  return shape.kind === 'circle' ? (
+    <Circle {...shape.props} />
+  ) : (
+    <Line {...shape.props} />
   );
 });
 

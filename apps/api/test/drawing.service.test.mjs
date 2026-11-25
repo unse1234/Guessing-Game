@@ -356,3 +356,129 @@ test('schemas reject malformed paint metadata and coordinates or batches beyond 
     assert.equal(withPoints(points), false);
   }
 });
+
+test('completed drawings retain final ink by game and turn until replay', (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 50_000 });
+  const { rooms, games, drawings, code, scope, draw } = fixture(t);
+  const guest = success(rooms.join('guest', code, 'Ali'));
+  const gameId = success(games.getView('host', code)).game.gameId;
+  const request = { gameId, turnId: scope.turnId };
+  success(rooms.create('outsider', 'Other'));
+  assert.equal(
+    drawings.completed('guest', request).error.code,
+    'DRAWING_UNAVAILABLE',
+  );
+  draw();
+  const points = [0, 600, 900, 0];
+  for (let index = 1; index <= 3; index++) {
+    success(
+      drawings.start('host', {
+        ...scope,
+        ...brush,
+        id: id(index),
+        point: points.slice(0, 2),
+        tool: index === 2 ? 'eraser' : 'pen',
+        size: index + 5,
+      }),
+    );
+    success(drawings.end('host', { ...scope, id: id(index), points }));
+  }
+  const { revision } = success(drawings.snapshot('guest', scope));
+  const { canvasVersion } = success(
+    drawings.undo('host', { ...scope, revision }),
+  ).data;
+  success(
+    drawings.start('host', { ...scope, canvasVersion, ...brush, id: id(4) }),
+  );
+  assert.equal(
+    drawings.completed('guest', request).error.code,
+    'DRAWING_UNAVAILABLE',
+  );
+  t.mock.timers.tick(gameConfig.drawingMs);
+
+  const summary = success(games.getView('guest', code)).game.summary;
+  assert.deepEqual(summary.drawing, {
+    turnId: scope.turnId,
+    round: 1,
+    turn: 1,
+    drawerName: 'Hammad',
+  });
+  const first = success(drawings.completed('guest', request));
+  assert.equal(first.gameId, gameId);
+  assert.equal(first.turnId, scope.turnId);
+  assert.equal(first.canvasVersion, canvasVersion);
+  assert.deepEqual(
+    first.strokes.map(({ id, tool, points }) => ({ id, tool, points })),
+    [
+      { id: id(1), tool: 'pen', points },
+      { id: id(2), tool: 'eraser', points },
+      { id: id(4), tool: 'pen', points: brush.point },
+    ],
+  );
+  assert.equal(
+    games.getCompletedDrawing(code, request).coordinates.byteLength,
+    20,
+  );
+  assert.equal(
+    drawings.completed('outsider', request).error.code,
+    'DRAWING_UNAVAILABLE',
+  );
+  assert.equal(
+    drawings.completed('unconnected', request).error.code,
+    'NOT_IN_ROOM',
+  );
+
+  rooms.disconnect('guest');
+  success(rooms.rejoin('reconnected', code, guest.reconnectToken));
+  t.mock.timers.tick(gameConfig.summaryMs);
+  assert.deepEqual(success(drawings.completed('reconnected', request)), first);
+  t.mock.timers.tick(gameConfig.selectionMs);
+  t.mock.timers.tick(gameConfig.drawingMs);
+  t.mock.timers.tick(gameConfig.summaryMs);
+  t.mock.timers.tick(gameConfig.selectionMs);
+  t.mock.timers.tick(gameConfig.drawingMs);
+  t.mock.timers.tick(gameConfig.summaryMs);
+  t.mock.timers.tick(gameConfig.selectionMs);
+  const lastTurn = success(games.getView('host', code)).game.turnId;
+  const lastScope = success(
+    drawings.snapshot('reconnected', { turnId: lastTurn }),
+  );
+  success(
+    drawings.start('reconnected', {
+      turnId: lastTurn,
+      canvasVersion: lastScope.canvasVersion,
+      ...brush,
+      id: id(5),
+    }),
+  );
+  t.mock.timers.tick(gameConfig.drawingMs);
+  const final = success(games.getView('host', code)).game;
+  assert.equal(final.phase, 'finished');
+  assert.equal(final.results.drawings.length, 4);
+  assert.equal(final.results.drawings.at(-1).turnId, lastTurn);
+  assert.equal(
+    success(drawings.completed('host', { gameId, turnId: lastTurn })).strokes[0]
+      .id,
+    id(5),
+  );
+  assert.deepEqual(success(drawings.completed('host', request)), first);
+  success(games.restart('host', { code, gameId }));
+  assert.equal(
+    drawings.completed('host', request).error.code,
+    'DRAWING_UNAVAILABLE',
+  );
+});
+
+test('closing a room releases its completed drawings', (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 50_000 });
+  const { rooms, games, drawings, code, draw } = fixture(t);
+  const { gameId, turnId } = draw();
+  t.mock.timers.tick(gameConfig.drawingMs);
+  assert.deepEqual(
+    success(drawings.completed('guest', { gameId, turnId })).strokes,
+    [],
+  );
+  rooms.leave('host');
+  rooms.leave('guest');
+  assert.equal(games.getCompletedDrawing(code, { gameId, turnId }), undefined);
+});

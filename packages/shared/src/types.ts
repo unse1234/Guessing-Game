@@ -68,6 +68,7 @@ export const ROOM_ERROR_MESSAGES = {
   ALREADY_GUESSED: 'You already guessed the word.',
   STALE_CANVAS: 'The canvas changed. Restoring its current state.',
   INVALID_STROKE: 'This drawing operation could not be applied.',
+  DRAWING_UNAVAILABLE: 'This completed drawing is unavailable.',
   DRAWING_LIMIT:
     'The drawing limit was reached. Clear the canvas or wait for the turn to end.',
   ALREADY_IN_ROOM:
@@ -109,6 +110,7 @@ export type TurnEndReason =
 export interface TurnSummary {
   reason: TurnEndReason;
   word: string | null;
+  drawing?: CompletedDrawingInfo;
   awards: {
     playerId: string;
     nickname: string;
@@ -129,6 +131,7 @@ export interface FinalGameResults {
   gameId: string;
   players: FinalPlayerResult[];
   winnerIds: string[];
+  drawings: CompletedDrawingInfo[];
   reason: 'completed' | 'insufficient_players';
   finishedAt: number;
 }
@@ -216,6 +219,18 @@ export interface DrawingUndone extends DrawingReceipt {
 export interface DrawingSnapshot extends DrawingReceipt {
   strokes: DrawingStroke[];
   active: { stroke: DrawingStroke; nextSequence: number } | null;
+}
+export interface CompletedDrawingInfo {
+  turnId: string;
+  round: number;
+  turn: number;
+  drawerName: string;
+}
+export interface CompletedDrawingSnapshot extends Omit<
+  DrawingSnapshot,
+  'active'
+> {
+  gameId: string;
 }
 export interface ScoreEntry {
   playerId: string;
