@@ -2,16 +2,19 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import shared from '@draw-and-guess/shared';
 import drawingModule from '../dist/drawing/drawing.service.js';
+import configModule from '../dist/game/game-config.js';
 import gameModule from '../dist/game/game.service.js';
 import roomsModule from '../dist/rooms/rooms.service.js';
 
 const { DrawingService } = drawingModule;
+const { gameConfig } = configModule;
 const { GameService } = gameModule;
 const { RoomsService } = roomsModule;
 const {
   drawStartSchema,
   drawPointsSchema,
   drawEndSchema,
+  drawUndoSchema,
   MAX_DRAW_STROKE_POINTS,
 } = shared;
 
@@ -140,6 +143,88 @@ test('clear changes canvas version and old events cannot resurrect anything', (t
   assert.equal(snapshot.canvasVersion, 1);
   assert.equal(snapshot.active, null);
   assert.deepEqual(snapshot.strokes, []);
+  assert.equal(
+    drawings.undo('host', clear.receipt).error.code,
+    'INVALID_STROKE',
+  );
+});
+
+test('undo removes completed strokes in reverse order and fences off their delayed packets', (t) => {
+  const { drawings, scope, draw } = fixture(t);
+  const empty = { ...scope, revision: 0 };
+  assert.equal(drawings.undo('host', empty).error.code, 'WRONG_PHASE');
+  draw();
+  assert.equal(drawings.undo('guest', empty).error.code, 'NOT_DRAWER');
+  assert.equal(drawings.undo('missing', empty).error.code, 'NOT_IN_ROOM');
+  assert.equal(drawings.undo('host', empty).error.code, 'INVALID_STROKE');
+
+  const pen = { ...scope, ...brush, id: id(1) };
+  success(drawings.start('host', pen));
+  success(drawings.end('host', { ...scope, id: pen.id, points: pen.point }));
+  const eraser = { ...pen, id: id(2), tool: 'eraser', size: 22 };
+  const active = success(drawings.start('host', eraser)).receipt;
+  assert.equal(drawings.undo('host', active).error.code, 'INVALID_STROKE');
+  const end = { ...scope, id: eraser.id, points: [10, 20, 20, 30] };
+  const completed = success(drawings.end('host', end)).receipt;
+  assert.equal(drawings.undo('host', active).error.code, 'STALE_CANVAS');
+  const undo = success(drawings.undo('host', completed)).data;
+  assert.deepEqual(undo, {
+    turnId: scope.turnId,
+    canvasVersion: scope.canvasVersion + 1,
+    revision: completed.revision + 1,
+    id: eraser.id,
+  });
+  assert.equal(drawings.undo('host', completed).error.code, 'STALE_CANVAS');
+  assert.equal(drawings.start('host', eraser).error.code, 'STALE_CANVAS');
+  assert.equal(drawings.end('host', end).error.code, 'STALE_CANVAS');
+  assert.equal(
+    drawings.points('host', { ...end, sequence: 0 }).error.code,
+    'STALE_CANVAS',
+  );
+  const afterErase = success(drawings.snapshot('guest', scope));
+  assert.deepEqual(
+    afterErase.strokes.map((stroke) => stroke.id),
+    [pen.id],
+  );
+  const secondUndo = success(drawings.undo('host', undo)).data;
+  assert.equal(secondUndo.id, pen.id);
+  const afterPen = success(drawings.snapshot('host', scope));
+  assert.deepEqual(afterPen.strokes, []);
+  assert.equal(afterPen.active, null);
+  assert.equal(drawings.undo('host', secondUndo).error.code, 'INVALID_STROKE');
+});
+
+test('undo is locked in the summary and cannot change a subsequent turn', (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 50_000 });
+  const { drawings, games, code, scope, draw } = fixture(t);
+  draw();
+  success(drawings.start('host', { ...scope, ...brush, id: id(1) }));
+  const first = success(
+    drawings.end('host', { ...scope, id: id(1), points: brush.point }),
+  ).receipt;
+  t.mock.timers.tick(gameConfig.drawingMs);
+  assert.equal(drawings.undo('host', first).error.code, 'WRONG_PHASE');
+  assert.equal(success(drawings.snapshot('guest', scope)).strokes.length, 1);
+
+  t.mock.timers.tick(gameConfig.summaryMs);
+  const { turnId, revision, options } = success(
+    games.getView('guest', code),
+  ).privateWord;
+  success(games.choose('guest', { code, turnId, revision, word: options[0] }));
+  const second = {
+    turnId,
+    canvasVersion: success(drawings.snapshot('guest', { turnId }))
+      .canvasVersion,
+  };
+  success(drawings.start('guest', { ...second, ...brush, id: id(2) }));
+  const current = success(
+    drawings.end('guest', { ...second, id: id(2), points: brush.point }),
+  ).receipt;
+  assert.equal(
+    drawings.undo('guest', { ...current, turnId: first.turnId }).error.code,
+    'STALE_CANVAS',
+  );
+  assert.equal(success(drawings.snapshot('host', second)).strokes[0].id, id(2));
 });
 
 test('disconnect settles the accepted prefix and timer end locks the preserved canvas', (t) => {
@@ -210,6 +295,15 @@ test('schemas reject malformed paint metadata and coordinates or batches beyond 
   };
   const good = { ...scope, ...brush, id: id(1) };
   assert.equal(drawStartSchema.safeParse(good).success, true);
+  assert.equal(
+    drawUndoSchema.safeParse({ ...scope, revision: 0 }).success,
+    true,
+  );
+  assert.equal(drawUndoSchema.safeParse(scope).success, false);
+  assert.equal(
+    drawUndoSchema.safeParse({ ...scope, revision: -1 }).success,
+    false,
+  );
   for (const invalid of [
     { ...good, size: 31 },
     { ...good, color: 'white' },

@@ -15,6 +15,7 @@ import type {
   drawPointsSchema,
   drawEndSchema,
   drawClearSchema,
+  drawUndoSchema,
   drawSyncSchema,
 } from './schemas';
 import type {
@@ -23,6 +24,7 @@ import type {
   DrawingReceipt,
   DrawingSnapshot,
   DrawingStarted,
+  DrawingUndone,
   GameView,
   GuessMessage,
   GuessNotice,
@@ -59,6 +61,7 @@ export const SOCKET_EVENTS = {
   drawPoints: 'draw:points',
   drawEnd: 'draw:end',
   drawClear: 'draw:clear',
+  drawUndo: 'draw:undo',
   drawSync: 'draw:sync',
 } as const;
 
@@ -77,6 +80,7 @@ export type DrawStart = z.infer<typeof drawStartSchema>;
 export type DrawPoints = z.infer<typeof drawPointsSchema>;
 export type DrawEnd = z.infer<typeof drawEndSchema>;
 export type DrawClear = z.infer<typeof drawClearSchema>;
+export type DrawUndo = z.infer<typeof drawUndoSchema>;
 export type DrawSync = z.infer<typeof drawSyncSchema>;
 
 export interface ClientToServerEvents {
@@ -92,6 +96,10 @@ export interface ClientToServerEvents {
   [SOCKET_EVENTS.drawClear]: (
     payload: DrawClear,
     ack: RoomAck<DrawingReceipt>,
+  ) => void;
+  [SOCKET_EVENTS.drawUndo]: (
+    payload: DrawUndo,
+    ack: RoomAck<DrawingUndone>,
   ) => void;
   [SOCKET_EVENTS.drawSync]: (
     payload: DrawSync,
@@ -138,6 +146,7 @@ export interface ServerToClientEvents {
   [SOCKET_EVENTS.drawPoints]: (batch: DrawingBatch) => void;
   [SOCKET_EVENTS.drawEnd]: (stroke: DrawingEnded) => void;
   [SOCKET_EVENTS.drawClear]: (receipt: DrawingReceipt) => void;
+  [SOCKET_EVENTS.drawUndo]: (event: DrawingUndone) => void;
   [SOCKET_EVENTS.pong]: (payload: Pong) => void;
   [SOCKET_EVENTS.roomUpdated]: (payload: RoomUpdated) => void;
   [SOCKET_EVENTS.roomClosed]: (payload: RoomClosed) => void;

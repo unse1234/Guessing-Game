@@ -7,6 +7,7 @@ import {
   type DrawPoints,
   type DrawStart,
   type DrawSync,
+  type DrawUndo,
   type DrawingBatch,
   type DrawingEnded,
   type DrawingReceipt,
@@ -14,6 +15,7 @@ import {
   type DrawingSnapshot,
   type DrawingStarted,
   type DrawingStroke,
+  type DrawingUndone,
   type RoomResponse,
 } from '@draw-and-guess/shared';
 import { GameService } from '../game/game.service';
@@ -21,7 +23,7 @@ import { RoomsService } from '../rooms/rooms.service';
 
 const maxCanvasStrokes = 256;
 const maxCanvasPoints = 24_576;
-// Clearing the canvas does not reset the turn's traffic budget.
+// Clear and undo preserve the turn's traffic budget.
 const maxTurnStrokes = 512;
 const maxTurnPoints = 49_152;
 
@@ -199,6 +201,34 @@ export class DrawingService implements OnModuleDestroy {
     canvas.canvasVersion++;
     canvas.revision++;
     return this.ack(canvas, { code: canvas.code, data: this.receipt(canvas) });
+  }
+
+  undo(
+    socketId: string,
+    payload: DrawUndo,
+  ): RoomResponse<Relay<DrawingUndone>> {
+    const result = this.writeAccess(socketId, payload);
+    if (!result.ok) return result;
+    const canvas = result.data;
+    if (payload.revision !== canvas.revision) return roomError('STALE_CANVAS');
+    if (canvas.active) return roomError('INVALID_STROKE');
+
+    let latest: DrawingStroke | undefined;
+    for (const stroke of canvas.strokes.values()) latest = stroke;
+    if (!latest) return roomError('INVALID_STROKE');
+
+    canvas.strokes.delete(latest.id);
+    canvas.points -= latest.points.length / 2;
+    // Fence off any retries of the removed stroke, including its start packet.
+    canvas.canvasVersion++;
+    canvas.revision++;
+    return {
+      ok: true,
+      data: {
+        code: canvas.code,
+        data: { ...this.receipt(canvas), id: latest.id },
+      },
+    };
   }
 
   snapshot(

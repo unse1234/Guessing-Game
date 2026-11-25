@@ -47,6 +47,7 @@ export function useDrawingSync(
     [],
   );
   const clear = useCallback(() => session.current?.clear(), []);
+  const undo = useCallback(() => session.current?.undo(), []);
   const retry = useCallback(() => session.current?.sync(), []);
 
   const current =
@@ -57,6 +58,7 @@ export function useDrawingSync(
 
   return {
     enabled: Boolean(canDraw && current?.ready),
+    canUndo: Boolean(canDraw && current?.canUndo),
     strokes: saved?.strokes ?? noStrokes,
     remotePreview: saved?.active?.stroke ?? null,
     key: `${socketId ?? 'offline'}:${turnId ?? 'waiting'}:${current?.generation ?? 0}`,
@@ -66,6 +68,7 @@ export function useDrawingSync(
     point,
     finish,
     clear,
+    undo,
     retry,
   };
 }

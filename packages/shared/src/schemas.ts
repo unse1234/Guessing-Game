@@ -93,6 +93,9 @@ export const drawSyncSchema = z.strictObject({ turnId: z.uuid() });
 export const drawClearSchema = drawSyncSchema.extend({
   canvasVersion: z.number().int().nonnegative(),
 });
+export const drawUndoSchema = drawClearSchema.extend({
+  revision: z.number().int().nonnegative(),
+});
 const x = z.number().int().min(0).max(DRAWING_WIDTH);
 const y = z.number().int().min(0).max(DRAWING_HEIGHT);
 function pointsSchema(limit: number) {

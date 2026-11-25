@@ -67,9 +67,11 @@ export function DrawingBoard({
           tool={tool}
           size={size}
           disabled={!drawing.enabled}
+          undoDisabled={!drawing.canUndo}
           onToolChange={setTool}
           onSizeChange={setSize}
           onClear={drawing.clear}
+          onUndo={drawing.undo}
         />
         <div className={styles.canvasSlot}>
           <DrawingCanvas

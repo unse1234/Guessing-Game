@@ -61,6 +61,7 @@ test('live drawing across a full room, optimistic previews, clear, and reconnect
     events.drawPoints,
     events.drawEnd,
     events.drawClear,
+    events.drawUndo,
   ]) {
     unrelated.on(event, () => {
       unrelatedPackets++;
@@ -275,19 +276,51 @@ test('live drawing across a full room, optimistic previews, clear, and reconnect
   const view = success(await request(sender, events.gameGetState, { code }));
   assert.equal(view.game.turnId, turnId);
   assert.equal(view.privateWord.word, options.options[0]);
-  assert.equal((await snapshot(sender, turnId)).strokes.length, 4);
+  const { strokes, active, ...beforeUndo } = await snapshot(sender, turnId);
+  assert.equal(strokes.length, 4);
+  assert.equal(active, null);
+  assert.equal(
+    (await request(watchers[1], events.drawUndo, beforeUndo)).error.code,
+    'NOT_DRAWER',
+  );
+  assert.equal(
+    (await request(sender, events.drawUndo, scope)).error.code,
+    'INVALID_REQUEST',
+  );
+  const watching = [refreshed, ...watchers.slice(1)];
+  let undoEvents = 0;
+  refreshed.on(events.drawUndo, () => undoEvents++);
+  const [accepted, duplicate, ...received] = await Promise.all([
+    request(sender, events.drawUndo, beforeUndo).then(success),
+    request(sender, events.drawUndo, beforeUndo),
+    ...watching.map((socket) => wait(socket, events.drawUndo)),
+  ]);
+  const { id: undone, ...afterUndo } = accepted;
+  assert.equal(undone, strokeId(4));
+  assert.equal(afterUndo.revision, beforeUndo.revision + 1);
+  assert.equal(afterUndo.canvasVersion, 1);
+  assert.equal(duplicate.error.code, 'STALE_CANVAS');
+  for (const event of received) assert.deepEqual(event, accepted);
+  assert.deepEqual(
+    (await snapshot(watchers[1], turnId)).strokes,
+    strokes.slice(0, -1),
+  );
 
   const [clear, receivedClear] = await Promise.all([
-    request(sender, events.drawClear, scope).then(success),
+    request(sender, events.drawClear, {
+      turnId,
+      canvasVersion: afterUndo.canvasVersion,
+    }).then(success),
     wait(refreshed, events.drawClear),
   ]);
   assert.deepEqual(clear, receivedClear);
-  assert.equal(clear.canvasVersion, 1);
+  assert.equal(clear.canvasVersion, 2);
   assert.equal(
     (
       await request(sender, events.drawEnd, {
-        ...scope,
-        id: strokeId(4),
+        turnId,
+        canvasVersion: afterUndo.canvasVersion,
+        id: stress.id,
         points: [10, 20],
       })
     ).error.code,
@@ -297,7 +330,8 @@ test('live drawing across a full room, optimistic previews, clear, and reconnect
     (await request(sender, events.drawClear, scope)).error.code,
     'STALE_CANVAS',
   );
-  assert.deepEqual((await snapshot(watchers[1], turnId)).strokes, []);
+  assert.deepEqual((await snapshot(watchers[2], turnId)).strokes, []);
+  assert.equal(undoEvents, 1);
   assert.equal(unrelatedPackets, 0);
   console.log(
     `[drawing localhost] full stroke across 7 peers: ${strokeMs.toFixed(2)} ms including input and final ACK; final ACK + fan-out ${endMs.toFixed(2)} ms; snapshot ${snapshotMs.toFixed(2)} ms. Stress: ${((batches * 1000) / elapsed).toFixed(1)} batches/s, 64 points/batch, ${Math.round(bytes / batches)} JSON bytes/batch, ${MAX_DRAW_STROKE_POINTS} final points.`,

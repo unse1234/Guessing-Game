@@ -210,6 +210,9 @@ export interface DrawingBatch extends DrawingReceipt {
   sentAt?: number;
 }
 export type DrawingEnded = DrawingStarted;
+export interface DrawingUndone extends DrawingReceipt {
+  id: string;
+}
 export interface DrawingSnapshot extends DrawingReceipt {
   strokes: DrawingStroke[];
   active: { stroke: DrawingStroke; nextSequence: number } | null;

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire, registerHooks } from 'node:module';
 import { resolve } from 'node:path';
 import test from 'node:test';
+import { setImmediate } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import shared from '@draw-and-guess/shared';
 
@@ -247,6 +248,80 @@ test('drawer publishes the completed stroke before its ACK and bounds reliable i
   const ends = socket.sent.filter(({ event }) => event === events.drawEnd);
   assert.equal(ends.length, 4);
   assert.deepEqual(ends[0].body.points, [10, 20, 15, 25]);
+});
+
+test('the drawer waits for stroke completion and applies only the authoritative undo', async (t) => {
+  const { session, socket, view } = fixture(t);
+  session.sync();
+  socket.sent[0].ack(null, {
+    ok: true,
+    data: { ...receipt(2), strokes: [pen], active: null },
+  });
+  assert.equal(view().canUndo, true);
+  assert.equal(session.start(eraser), true);
+  assert.equal(view().canUndo, false);
+  session.undo();
+  assert.equal(socket.sent.at(-1).event, events.drawStart);
+  session.finish(eraser);
+  session.undo();
+  assert.equal(socket.sent.at(-1).event, events.drawEnd);
+  socket.sent[1].ack({ ok: true, data: receipt(3) });
+  socket.sent[2].ack({ ok: true, data: receipt(4) });
+  await setImmediate();
+  assert.equal(view().canUndo, true);
+
+  session.undo();
+  session.undo();
+  assert.equal(view().canUndo, false);
+  assert.deepEqual(view().scene.strokes, [pen, eraser]);
+  assert.equal(socket.sent.length, 4);
+  assert.equal(socket.sent[3].event, events.drawUndo);
+  assert.deepEqual(socket.sent[3].body, receipt(4));
+  socket.sent[3].ack({ ok: true, data: { ...receipt(5, 1), id: eraser.id } });
+  await setImmediate();
+  assert.deepEqual(view().scene.strokes, [pen]);
+  assert.equal(view().canUndo, true);
+
+  session.undo();
+  assert.deepEqual(socket.sent[4].body, receipt(5, 1));
+  socket.sent[4].ack({ ok: true, data: { ...receipt(6, 2), id: pen.id } });
+  await setImmediate();
+  assert.deepEqual(view().scene.strokes, []);
+  assert.equal(view().canUndo, false);
+});
+
+test('peers ignore duplicate undo and late strokes, then resync if the removal delta has a gap', (t) => {
+  const { session, socket, view } = fixture(t);
+  session.sync();
+  socket.sent[0].ack(null, {
+    ok: true,
+    data: { ...receipt(4), strokes: [pen, eraser], active: null },
+  });
+  const undo = { ...receipt(5, 1), id: eraser.id };
+  socket.emit(events.drawUndo, undo);
+  socket.emit(events.drawUndo, undo);
+  socket.emit(events.drawUndo, { ...receipt(6, 2), id: pen.id, turnId: 'old' });
+  socket.emit(events.drawStart, { ...receipt(6), stroke: eraser });
+  socket.emit(events.drawPoints, {
+    ...receipt(7),
+    id: eraser.id,
+    sequence: 0,
+    points: [30, 35],
+  });
+  socket.emit(events.drawEnd, { ...receipt(8), stroke: eraser });
+  assert.equal(view().scene.active, null);
+  assert.deepEqual(view().scene.strokes, [pen]);
+  assert.equal(socket.sent.length, 1);
+
+  socket.emit(events.drawUndo, { ...receipt(8, 2), id: eraser.id });
+  assert.equal(view().ready, false);
+  assert.equal(socket.sent[1].event, events.drawSync);
+  socket.sent[1].ack(null, {
+    ok: true,
+    data: { ...receipt(8, 2), strokes: [pen], active: null },
+  });
+  assert.deepEqual(view().scene.strokes, [pen]);
+  assert.equal(view().ready, true);
 });
 
 test('a retry ignores stale snapshot acknowledgements and preserves the next live packet', (t) => {

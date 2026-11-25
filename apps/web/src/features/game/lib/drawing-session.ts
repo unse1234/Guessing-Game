@@ -7,6 +7,7 @@ import {
   type DrawingSnapshot,
   type DrawingStarted,
   type DrawingStroke,
+  type DrawingUndone,
   type RoomResponse,
 } from '@draw-and-guess/shared';
 import { createPointBatcher } from '@/features/game/lib/point-batcher';
@@ -21,6 +22,7 @@ const maxPending = 8;
 export interface DrawingView {
   scene: DrawingSnapshot | null;
   ready: boolean;
+  canUndo: boolean;
   error: string | null;
   generation: number;
 }
@@ -56,6 +58,7 @@ export class DrawingSession {
     socket.on(SOCKET_EVENTS.drawPoints, this.onPoints);
     socket.on(SOCKET_EVENTS.drawEnd, this.onEnd);
     socket.on(SOCKET_EVENTS.drawClear, this.onClear);
+    socket.on(SOCKET_EVENTS.drawUndo, this.onUndo);
   }
 
   dispose() {
@@ -65,6 +68,7 @@ export class DrawingSession {
     this.socket.off(SOCKET_EVENTS.drawPoints, this.onPoints);
     this.socket.off(SOCKET_EVENTS.drawEnd, this.onEnd);
     this.socket.off(SOCKET_EVENTS.drawClear, this.onClear);
+    this.socket.off(SOCKET_EVENTS.drawUndo, this.onUndo);
   }
 
   stopStroke() {
@@ -99,6 +103,7 @@ export class DrawingSession {
   start(stroke: DrawingStroke) {
     const scope = this.scope();
     if (!scope || this.active || this.pending > maxPending - 2) return false;
+    const canUndo = this.canUndo;
     const { points, id, ...brush } = stroke;
     const batcher = createPointBatcher(points, (sequence, batch) => {
       if (
@@ -132,6 +137,7 @@ export class DrawingSession {
         point: [points[0], points[1]],
       }),
     );
+    if (canUndo) this.notify();
     return true;
   }
 
@@ -145,7 +151,6 @@ export class DrawingSession {
     active.batcher.finish();
     this.active = undefined;
     this.scene = this.withStroke(this.scene, stroke);
-    this.notify();
     const started = performance.now();
     this.mutate(
       () =>
@@ -162,6 +167,7 @@ export class DrawingSession {
         }
       },
     );
+    this.notify();
   }
 
   clear() {
@@ -180,14 +186,39 @@ export class DrawingSession {
     );
   }
 
+  undo() {
+    const scope = this.scope();
+    if (!scope || !this.scene || !this.canUndo) return;
+    const request = { ...scope, revision: this.scene.revision };
+    this.ready = false;
+    this.mutate(
+      () =>
+        this.socket
+          .timeout(ackTimeout)
+          .emitWithAck(SOCKET_EVENTS.drawUndo, request),
+      this.onUndo,
+    );
+    this.notify();
+  }
+
+  private get canUndo() {
+    return (
+      this.ready &&
+      this.pending === 0 &&
+      !this.active &&
+      !this.scene?.active &&
+      Boolean(this.scene?.strokes.length)
+    );
+  }
+
   private scope(): DrawingScope | null {
     if (!this.ready || !this.scene || !this.socket.connected) return null;
     return { turnId: this.turnId, canvasVersion: this.scene.canvasVersion };
   }
 
-  private mutate(
-    request: () => Promise<RoomResponse<DrawingReceipt>>,
-    after?: (receipt: DrawingReceipt) => void,
+  private mutate<T extends DrawingReceipt>(
+    request: () => Promise<RoomResponse<T>>,
+    after?: (receipt: T) => void,
   ) {
     const epoch = this.epoch;
     this.pending++;
@@ -214,6 +245,7 @@ export class DrawingSession {
       )
       .finally(() => {
         this.pending--;
+        if (!this.disposed && this.canUndo) this.notify();
       });
   }
 
@@ -314,6 +346,37 @@ export class DrawingSession {
     this.notify();
   };
 
+  private onUndo = ({ id, ...receipt }: DrawingUndone) => {
+    const scene = this.scene;
+    if (
+      this.syncing ||
+      !scene ||
+      receipt.turnId !== this.turnId ||
+      receipt.canvasVersion <= scene.canvasVersion ||
+      receipt.revision <= scene.revision
+    )
+      return;
+
+    if (
+      receipt.canvasVersion !== scene.canvasVersion + 1 ||
+      receipt.revision !== scene.revision + 1 ||
+      scene.active ||
+      scene.strokes.at(-1)?.id !== id
+    ) {
+      this.sync();
+      return;
+    }
+
+    this.scene = {
+      ...receipt,
+      strokes: scene.strokes.slice(0, -1),
+      active: null,
+    };
+    this.ready = true;
+    this.error = null;
+    this.notify();
+  };
+
   private current(event: DrawingReceipt) {
     const scene = this.scene;
     return this.ready &&
@@ -343,6 +406,7 @@ export class DrawingSession {
     this.publish({
       scene: this.scene,
       ready: this.ready,
+      canUndo: this.canUndo,
       error: this.error,
       generation: this.generation,
     });

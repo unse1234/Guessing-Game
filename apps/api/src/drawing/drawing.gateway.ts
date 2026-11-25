@@ -4,10 +4,12 @@ import {
   drawPointsSchema,
   drawStartSchema,
   drawSyncSchema,
+  drawUndoSchema,
   roomError,
   SOCKET_EVENTS,
   type DrawingReceipt,
   type DrawingSnapshot,
+  type DrawingUndone,
   type RoomAck,
 } from '@draw-and-guess/shared';
 import {
@@ -147,7 +149,27 @@ export class DrawingGateway
     ack(this.drawings.snapshot(socket.id, parsed.data));
   }
 
-  private allowMutation(socket: RoomSocket, ack: RoomAck<DrawingReceipt>) {
+  @SubscribeMessage(SOCKET_EVENTS.drawUndo)
+  undo(
+    @ConnectedSocket() socket: RoomSocket,
+    @MessageBody() raw: unknown,
+    @Ack() ack: RoomAck<DrawingUndone>,
+  ) {
+    if (!this.allowMutation(socket, ack)) return;
+    const parsed = drawUndoSchema.safeParse(raw);
+    if (!parsed.success) return ack(roomError('INVALID_REQUEST'));
+
+    const result = this.drawings.undo(socket.id, parsed.data);
+    if (!result.ok) return ack(result);
+    const { code, data } = result.data;
+    socket.to(channel(code)).emit(SOCKET_EVENTS.drawUndo, data);
+    ack({ ok: true, data });
+  }
+
+  private allowMutation<T extends DrawingReceipt>(
+    socket: RoomSocket,
+    ack: RoomAck<T>,
+  ) {
     if (!socket.connected || typeof ack !== 'function') return false;
     if (this.take(socket)) return true;
     ack(roomError('RATE_LIMITED'));

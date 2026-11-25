@@ -1,9 +1,15 @@
 'use client';
 
-import { Eraser, Pencil, Trash2 } from 'lucide-react';
+import { Eraser, Pencil, Trash2, Undo2 } from 'lucide-react';
 import { memo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { DrawingColorWheel } from '@/features/game/components/drawing-color-wheel';
 import { quickDrawingColors } from '@/features/game/data/drawing-colors';
 import {
@@ -17,9 +23,11 @@ interface DrawingToolsProps {
   tool: DrawingTool;
   size: number;
   disabled: boolean;
+  undoDisabled: boolean;
   onToolChange: (tool: DrawingTool) => void;
   onSizeChange: (size: number) => void;
   onClear: () => void;
+  onUndo: () => void;
 }
 
 const toolChoices = [
@@ -31,9 +39,11 @@ export const DrawingTools = memo(function DrawingTools({
   tool,
   size,
   disabled,
+  undoDisabled,
   onToolChange,
   onSizeChange,
   onClear,
+  onUndo,
 }: DrawingToolsProps) {
   return (
     <div
@@ -57,6 +67,26 @@ export const DrawingTools = memo(function DrawingTools({
           <Icon aria-hidden="true" className="size-5" />
         </Button>
       ))}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                aria-label="Undo last stroke"
+                disabled={undoDisabled}
+                onClick={onUndo}
+                className="size-10 shrink-0 transition-none focus-visible:ring-ring sm:size-11 [@media(pointer:coarse)]:size-11"
+              >
+                <Undo2 aria-hidden="true" className="size-5" />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent sideOffset={4}>Undo last stroke</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <Button
         type="button"
         variant="outline"

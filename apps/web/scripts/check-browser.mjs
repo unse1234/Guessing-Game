@@ -502,6 +502,110 @@ test(
 );
 
 test(
+  'undo restores erased pixels and stays in sync across browser sessions and refresh',
+  { timeout: 65_000 },
+  async (t) => {
+    const { host, guests, errors, start } = await fixture(t, 2);
+    const [guest] = guests;
+    await guest.setViewportSize(deviceViewports[2]);
+    await start();
+    const word = await chooseWord(host, guests);
+    const undo = button(host, 'Undo last stroke');
+    const guestUndo = button(guest, 'Undo last stroke');
+    const pencil = button(host, 'Pencil');
+    const eraser = button(host, 'Eraser');
+    await ready(pencil);
+    assert.equal(await undo.isDisabled(), true);
+    assert.equal(await guestUndo.isDisabled(), true);
+
+    await checkViewports(host, undo);
+    await host.setViewportSize(viewports[1]);
+    await host.evaluate(() => {
+      globalThis.document.documentElement.style.fontSize = '125%';
+    });
+    await undo.scrollIntoViewIfNeeded();
+    assert.equal(await undo.isVisible(), true);
+    assert.equal(
+      await host.evaluate(
+        () =>
+          globalThis.document.documentElement.scrollWidth <=
+          globalThis.innerWidth,
+      ),
+      true,
+    );
+    await host.evaluate(() => {
+      globalThis.document.documentElement.style.fontSize = '';
+    });
+    await host.setViewportSize(viewports[0]);
+
+    const coral = [244, 63, 94, 255];
+    await button(host, 'Coral').click();
+    await host.getByRole('slider', { name: 'Brush size' }).press('End');
+    const surface = host.getByRole('img', {
+      name: 'Drawing canvas',
+      exact: true,
+    });
+    await surface.scrollIntoViewIfNeeded();
+    const box = await surface.boundingBox();
+    // Keep the first replay cached and cross below the cache threshold on the next undo.
+    for (let i = 0; i < 15; i++) {
+      await host.mouse.click(
+        box.x + box.width * 0.15,
+        box.y + box.height * 0.2,
+      );
+      await ready(undo);
+    }
+    await drawLine(host);
+    await expectPixel(guest, 0.5, coral);
+    await ready(undo);
+    await eraser.click();
+    await drawLine(host, async () => {
+      assert.equal(await undo.isDisabled(), true);
+    });
+    await Promise.all(
+      [host, guest].map((page) => expectPixel(page, 0.5, null)),
+    );
+    await ready(undo);
+    assert.equal(await guestUndo.isDisabled(), true);
+
+    await eraser.focus();
+    await host.keyboard.press('Tab');
+    assert.equal(
+      await undo.evaluate((control) => control.matches(':focus-visible')),
+      true,
+    );
+    await host.getByRole('tooltip', { name: 'Undo last stroke' }).waitFor(wait);
+    await host.keyboard.press('Enter');
+    await Promise.all(
+      [host, guest].map((page) => expectPixel(page, 0.5, coral)),
+    );
+    await host.reload();
+    await expectPixel(host, 0.5, coral);
+    await undo.click();
+    await Promise.all(
+      [host, guest].map((page) => expectPixel(page, 0.5, null)),
+    );
+    await expectPixel(guest, 0.15, coral, 0.2);
+
+    await button(host, 'Clear canvas').click();
+    await Promise.all(
+      [host, guest].map((page) => expectPixel(page, 0.15, null, 0.2)),
+    );
+    await ready(pencil);
+    assert.equal(await undo.isDisabled(), true);
+    await drawLine(host);
+    await ready(undo);
+    await submit(guest, word);
+    await dialog(host, 'Turn Complete').waitFor(wait);
+    assert.equal(
+      await host.locator('button[aria-label="Undo last stroke"]').isDisabled(),
+      true,
+    );
+    assert.deepEqual(errors, []);
+  },
+);
+
+test(
   'three browsers play two rounds, use every drawing tool, and replay from Results',
   { timeout: 110_000 },
   async (t) => {
