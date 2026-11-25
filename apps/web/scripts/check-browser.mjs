@@ -9,7 +9,7 @@ import { io } from 'socket.io-client';
 
 const require = createRequire(import.meta.url);
 const packageDir = process.env.PLAYWRIGHT_PACKAGE_DIR;
-const { chromium } = packageDir
+const { chromium, firefox } = packageDir
   ? require(require.resolve('playwright-core', { paths: [packageDir] }))
   : require('playwright-core');
 const origin = process.env.FRONTEND_URL ?? 'http://localhost:3000';
@@ -53,9 +53,18 @@ async function ready(locator) {
   }
 }
 
-async function fixture(t, count = 3, mobile = false) {
-  const browser = await chromium.launch(
-    chrome ? { executablePath: chrome } : { channel: 'chrome' },
+async function fixture(
+  t,
+  count = 3,
+  mobile = false,
+  { browserType = chromium, initScript, beforeGuests } = {},
+) {
+  const browser = await browserType.launch(
+    browserType === chromium
+      ? chrome
+        ? { executablePath: chrome }
+        : { channel: 'chrome' }
+      : {},
   );
   t.after(() => browser.close());
   const errors = [];
@@ -72,6 +81,7 @@ async function fixture(t, count = 3, mobile = false) {
           }
         : { viewport },
     );
+    if (initScript) await context.addInitScript(initScript);
     const page = await context.newPage();
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('websocket', (socket) => {
@@ -93,6 +103,7 @@ async function fixture(t, count = 3, mobile = false) {
   await button(host, 'Create Room').click();
   await host.waitForURL('**/room/*', wait);
   const code = new URL(host.url()).pathname.split('/').at(-1);
+  await beforeGuests?.(host);
   for (const [i, guest] of guests.entries()) {
     await guest.goto(origin);
     await button(guest, 'Join Room').click();
@@ -203,6 +214,233 @@ async function submit(page, value, mouse = false) {
     await input(page).press('Enter');
   }
 }
+
+function recordGameAudio() {
+  const NativeAudioContext = globalThis.AudioContext;
+  const probe = { contexts: [], cues: [] };
+  globalThis.gameAudioProbe = probe;
+  globalThis.AudioContext = class extends NativeAudioContext {
+    constructor(...args) {
+      super(...args);
+      probe.contexts.push(this);
+    }
+
+    createOscillator() {
+      const source = super.createOscillator();
+      const cue = { notes: [] };
+      const schedulePitch = source.frequency.setValueAtTime.bind(
+        source.frequency,
+      );
+      const start = source.start.bind(source);
+      const stop = source.stop.bind(source);
+      source.frequency.setValueAtTime = (pitch, time) => {
+        cue.notes.push(pitch);
+        return schedulePitch(pitch, time);
+      };
+      source.start = (time) => {
+        cue.start = time;
+        probe.cues.push(cue);
+        return start(time);
+      };
+      source.stop = (time = this.currentTime) => {
+        cue.end = time;
+        return stop(time);
+      };
+      return source;
+    }
+  };
+}
+
+const cueNotes = {
+  join: [659, 784],
+  start: [392, 523, 659],
+  turn: [587, 698],
+  wrong: [294],
+  correct: [523, 659, 880],
+  finish: [523, 659, 784, 1047],
+};
+
+async function expectSounds(page, expected) {
+  await page.waitForFunction(
+    (count) => globalThis.gameAudioProbe.cues.length >= count,
+    expected.length,
+    wait,
+  );
+  const actual = await page.evaluate(() =>
+    globalThis.gameAudioProbe.cues.map(({ notes }) => notes),
+  );
+  assert.deepEqual(
+    actual,
+    expected.map((cue) => cueNotes[cue]),
+  );
+}
+
+function waitForAudio(page) {
+  return page.waitForFunction(
+    () => globalThis.gameAudioProbe.contexts[0]?.state === 'running',
+    undefined,
+    wait,
+  );
+}
+
+function waitForSilence(page) {
+  return page.waitForFunction(
+    () => {
+      const { cues, contexts } = globalThis.gameAudioProbe;
+      return contexts[0].currentTime > cues.at(-1).end + 0.13;
+    },
+    undefined,
+    wait,
+  );
+}
+
+test(
+  'game sounds follow live events, respect mute and survive page navigation',
+  { timeout: 80_000 },
+  async (t) => {
+    const variant = process.env.QA_SOUND_BROWSER;
+    const mobile = variant === 'mobile';
+    const toggle = (page) => button(page, 'Game sounds');
+    const audioContexts = (page) =>
+      page.evaluate(() => globalThis.gameAudioProbe.contexts.length);
+    const clickToggle = (page) =>
+      mobile ? toggle(page).tap() : toggle(page).click();
+    const { host, guests, pages, errors, start } = await fixture(t, 2, mobile, {
+      browserType: variant === 'firefox' ? firefox : chromium,
+      initScript: recordGameAudio,
+      beforeGuests: async (page) => {
+        assert.equal(await toggle(page).getAttribute('aria-pressed'), 'false');
+        assert.equal(await audioContexts(page), 0);
+        if (mobile) await clickToggle(page);
+        else await toggle(page).press('Space');
+        await waitForAudio(page);
+        assert.equal(await toggle(page).getAttribute('aria-pressed'), 'true');
+      },
+    });
+    const [guest] = guests;
+    await expectSounds(host, ['join']);
+    await expectSounds(guest, []);
+    assert.equal(await audioContexts(guest), 0);
+    await clickToggle(guest);
+    await waitForAudio(guest);
+
+    await checkViewports(host, toggle(host));
+    await host.setViewportSize(viewports[1]);
+    await host.evaluate(() => {
+      globalThis.document.documentElement.style.fontSize = '125%';
+    });
+    await toggle(host).scrollIntoViewIfNeeded();
+    assert.equal(
+      await host.evaluate(
+        () =>
+          globalThis.document.documentElement.scrollWidth <=
+          globalThis.innerWidth,
+      ),
+      true,
+    );
+    await host.evaluate(() => {
+      globalThis.document.documentElement.style.fontSize = '';
+    });
+    await host.setViewportSize(mobile ? deviceViewports[0] : viewports[0]);
+    await waitForSilence(host);
+    await start();
+    await expectSounds(host, ['join', 'start']);
+    await expectSounds(guest, ['start']);
+    await Promise.all(pages.map(waitForSilence));
+    const firstWord = await chooseWord(host, guests);
+    await expectSounds(host, ['join', 'start', 'turn']);
+    await expectSounds(guest, ['start', 'turn']);
+    await Promise.all(pages.map(waitForSilence));
+    await submit(guest, 'A deliberately incorrect answer', true);
+    await expectSounds(guest, ['start', 'turn', 'wrong']);
+    await expectSounds(host, ['join', 'start', 'turn']);
+    await submit(guest, firstWord, true);
+    await expectSounds(guest, ['start', 'turn', 'wrong', 'correct']);
+    await expectSounds(host, ['join', 'start', 'turn', 'correct']);
+
+    await dialog(guest, 'Choose a Word').waitFor(wait);
+    await clickToggle(host);
+    const secondWord = await chooseWord(guest, [host]);
+    await expectSounds(guest, ['start', 'turn', 'wrong', 'correct', 'turn']);
+    await submit(host, secondWord, true);
+    await expectSounds(guest, [
+      'start',
+      'turn',
+      'wrong',
+      'correct',
+      'turn',
+      'correct',
+    ]);
+    await expectSounds(host, ['join', 'start', 'turn', 'correct']);
+    assert.equal(await audioContexts(host), 1);
+
+    await host.reload();
+    const thirdWord = await chooseWord(host, guests);
+    assert.equal(await toggle(host).getAttribute('aria-pressed'), 'false');
+    assert.equal(await audioContexts(host), 0);
+    await clickToggle(host);
+    await waitForAudio(host);
+    await submit(guest, thirdWord, true);
+    await expectSounds(host, ['correct']);
+    const fourthWord = await chooseWord(guest, [host]);
+    await expectSounds(host, ['correct', 'turn']);
+    await submit(host, fourthWord, true);
+    await Promise.all(
+      pages.map((page) => page.waitForURL('**/results/*', wait)),
+    );
+    await expectSounds(host, ['correct', 'turn', 'finish']);
+    await expectSounds(guest, [
+      'start',
+      'turn',
+      'wrong',
+      'correct',
+      'turn',
+      'correct',
+      'turn',
+      'correct',
+      'turn',
+      'finish',
+    ]);
+    for (const page of pages) {
+      assert.equal(await audioContexts(page), 1);
+      assert.equal(
+        await page.evaluate(() =>
+          globalThis.gameAudioProbe.cues.every(
+            (cue, index, cues) =>
+              index === 0 || cues[index - 1].end <= cue.start,
+          ),
+        ),
+        true,
+      );
+    }
+
+    await host.reload();
+    await host.waitForFunction(
+      () =>
+        globalThis.document
+          .querySelector('[aria-label="Game sounds"]')
+          .getAttribute('aria-pressed') === 'true',
+      undefined,
+      wait,
+    );
+    assert.equal(await audioContexts(host), 0);
+    await expectSounds(host, []);
+    await ready(button(host, 'Play Again'));
+    const heading = host.getByRole('heading').first();
+    if (mobile) await heading.tap();
+    else await heading.click();
+    await waitForAudio(host);
+    await expectSounds(host, []);
+    await button(host, 'Back to Home').click();
+    await host.waitForURL(new URL('/', origin).href, wait);
+    await host.waitForFunction(
+      () => globalThis.gameAudioProbe.contexts[0]?.state === 'closed',
+      undefined,
+      wait,
+    );
+    assert.deepEqual(errors, []);
+  },
+);
 
 async function checkViewports(page, control) {
   for (const viewport of deviceViewports) {

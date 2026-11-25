@@ -14,6 +14,7 @@ import {
   type ScoreEntry,
   type WordChoose,
 } from '@draw-and-guess/shared';
+import { playGameSound } from '@/lib/game-audio';
 import type { getGameSocket } from '@/lib/socket';
 import { emptyGuessing, useGameStore } from '@/stores/game-store';
 import { useRoomStore } from '@/stores/room-store';
@@ -27,7 +28,10 @@ type GameRequest =
 const ackTimeout = 5_000;
 let navigation: { code: string; started: number } | undefined;
 
-function ingestGame(game: PublicGameState, roundTripMs?: number) {
+function ingestGame(
+  game: PublicGameState,
+  observation?: { roundTripMs: number; restored?: true },
+) {
   const session = useRoomStore.getState();
   if (
     session.connection !== 'connected' ||
@@ -41,9 +45,10 @@ function ingestGame(game: PublicGameState, roundTripMs?: number) {
   const sameGeneration = sameRoom && current.generation === game.generation;
   if (sameGeneration && current.revision > game.revision) return;
 
-  const clockOffsetMs = game.serverTime - Date.now() + (roundTripMs ?? 0) / 2;
+  const clockOffsetMs =
+    game.serverTime - Date.now() + (observation?.roundTripMs ?? 0) / 2;
   if (sameGeneration && current.revision === game.revision) {
-    if (roundTripMs !== undefined) useGameStore.setState({ clockOffsetMs });
+    if (observation) useGameStore.setState({ clockOffsetMs });
     return;
   }
 
@@ -57,7 +62,25 @@ function ingestGame(game: PublicGameState, roundTripMs?: number) {
     privateWord: null,
     clockOffsetMs,
   });
-  if (process.env.NODE_ENV === 'development' && roundTripMs === undefined) {
+  if (!observation?.restored) {
+    if (
+      game.phase === 'word_selection' &&
+      game.currentTurn === 1 &&
+      game.gameId !== current?.gameId
+    )
+      playGameSound('start', game.roomCode);
+    else if (
+      game.phase === 'drawing' &&
+      (current?.phase !== 'drawing' || current.turnId !== game.turnId)
+    )
+      playGameSound('turn', game.roomCode);
+    else if (
+      game.phase === 'finished' &&
+      (current?.phase !== 'finished' || current.gameId !== game.gameId)
+    )
+      playGameSound('finish', game.roomCode);
+  }
+  if (process.env.NODE_ENV === 'development' && !observation) {
     console.debug(
       `[game] ${game.phase} update received ${Date.now() - game.serverTime} ms after server timestamp (wall clocks)`,
     );
@@ -107,6 +130,9 @@ function ingestActivity(item: GuessActivity) {
       ? { scores: applyScores(state.scores, item.scores) }
       : {}),
   });
+  if (item.kind === 'correct') playGameSound('correct', item.roomCode);
+  else if (item.playerId === useRoomStore.getState().playerId)
+    playGameSound('wrong', item.roomCode);
 }
 
 function ingestGuessSnapshot(game: PublicGameState, snapshot: GuessSnapshot) {
@@ -225,7 +251,10 @@ export async function requestGame(
         useRoomStore.getState().playerId !== playerId
       )
         return roomError('SERVER_UNAVAILABLE');
-      ingestGame(result.data.game, performance.now() - started);
+      ingestGame(result.data.game, {
+        roundTripMs: performance.now() - started,
+        restored: true,
+      });
       if (result.data.privateWord) ingestPrivate(result.data.privateWord);
       if (result.data.guessing)
         ingestGuessSnapshot(result.data.game, result.data.guessing);
@@ -257,7 +286,7 @@ export async function requestGame(
         break;
     }
     if (result.ok && socket.id === socketId)
-      ingestGame(result.data, performance.now() - started);
+      ingestGame(result.data, { roundTripMs: performance.now() - started });
     return result;
   } catch {
     return roomError('SERVER_UNAVAILABLE');

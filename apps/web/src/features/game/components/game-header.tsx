@@ -1,5 +1,6 @@
 import { Users } from 'lucide-react';
 import { SiteBrand } from '@/components/layout/site-brand';
+import { SoundToggle } from '@/components/layout/sound-toggle';
 import { Badge } from '@/components/ui/badge';
 
 export function GameHeader({
@@ -41,6 +42,7 @@ export function GameHeader({
         >
           Room: <strong className="font-semibold">{code}</strong>
         </Badge>
+        <SoundToggle />
       </div>
     </header>
   );

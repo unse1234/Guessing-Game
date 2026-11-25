@@ -7,6 +7,7 @@ import {
   type RoomSession,
   type RoomSnapshot,
 } from '@draw-and-guess/shared';
+import { playGameSound } from '@/lib/game-audio';
 import { bindGameEvents } from '@/lib/game-client';
 import { getGameSocket } from '@/lib/socket';
 import { resetGameSession } from '@/stores/game-store';
@@ -140,7 +141,7 @@ function getRoomClient() {
     state.setState({ connection: 'connecting' }),
   );
   socket.on(SOCKET_EVENTS.roomUpdated, ({ room, sentAt }) => {
-    const current = state.getState().room;
+    const { room: current, connection } = state.getState();
     if (current?.code !== room.code) {
       if (earlyRoom?.code !== room.code || earlyRoom.revision < room.revision)
         earlyRoom = room;
@@ -149,6 +150,16 @@ function getRoomClient() {
     if (current.revision >= room.revision) return;
 
     state.setState({ room });
+    if (
+      connection === 'connected' &&
+      room.players.some(
+        (player) =>
+          player.isOnline &&
+          !current.players.some(({ id }) => id === player.id),
+      )
+    ) {
+      playGameSound('join', room.code);
+    }
     if (process.env.NODE_ENV === 'development' && sentAt !== undefined) {
       console.debug(
         `[rooms] update propagation: ${Date.now() - sentAt} ms (wall clock)`,

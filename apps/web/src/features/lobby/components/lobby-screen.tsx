@@ -1,5 +1,6 @@
 import { FeedbackToaster } from '@/components/layout/feedback-toaster';
 import { SiteBrand } from '@/components/layout/site-brand';
+import { SoundToggle } from '@/components/layout/sound-toggle';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { LobbyActions } from '@/features/lobby/components/lobby-actions';
@@ -14,12 +15,15 @@ export function LobbyScreen({ code }: { code: string }) {
           <div className="flex min-w-0 items-center gap-2 text-lg font-semibold sm:gap-3 sm:text-2xl">
             <SiteBrand />
           </div>
-          <Badge
-            variant="secondary"
-            className="block max-w-full rounded-md px-2.5 py-1 text-sm wrap-anywhere whitespace-normal"
-          >
-            Room: <strong className="font-semibold">{code}</strong>
-          </Badge>
+          <div className="flex min-w-0 items-center gap-1">
+            <Badge
+              variant="secondary"
+              className="block min-w-0 rounded-md px-2.5 py-1 text-sm wrap-anywhere whitespace-normal"
+            >
+              Room: <strong className="font-semibold">{code}</strong>
+            </Badge>
+            <SoundToggle />
+          </div>
         </header>
 
         <div className="grid gap-[clamp(0.75rem,2.5svh,1.75rem)] px-4 py-[clamp(0.75rem,3svh,2rem)] sm:px-8">
